@@ -181,20 +181,191 @@
     .drag-handle { cursor: grab; color: #ccc; font-size: 14px; user-select: none; }
     .drag-handle:active { cursor: grabbing; }
 
-    /* 전체 보기 */
-    .all-section { margin-bottom: 28px; }
-    .all-section-head {
-      display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    /* ── 릴리즈노트 스타일 보드 ── */
+    #board { padding: 20px 24px; max-width: 900px; margin: 0 auto; }
+
+    /* 유저 헤더 */
+    .rn-person-head { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+    .rn-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+    .rn-person-name { font-size:16px; font-weight:700; color:#1a1a2e; }
+    .rn-title { font-size:12px; font-weight:400; color:#888; margin-left:4px; }
+    .rn-dept { font-size:12px; color:#aaa; }
+
+    /* 주차 섹션 */
+    .week-section { margin-bottom:10px; }
+    .week-header {
+      display:flex; align-items:center; gap:10px; padding:11px 16px;
+      background:white; border-radius:8px; cursor:pointer;
+      border:1px solid #e8e8e8; margin-bottom:6px;
+      box-shadow:0 1px 3px rgba(0,0,0,0.04); user-select:none;
+      transition:background 0.1s;
     }
-    .all-user-badge {
-      display: inline-flex; align-items: center; gap: 5px;
-      padding: 4px 14px; border-radius: 20px;
-      font-size: 13px; font-weight: 600; color: white;
+    .week-header:hover { background:#fafbff; }
+    .week-dot { width:10px; height:10px; border-radius:50%; background:#ccc; flex-shrink:0; }
+    .week-dot.current { background:#34a853; box-shadow:0 0 0 3px rgba(52,168,83,0.18); }
+    .week-label { font-weight:700; font-size:13px; color:#1a1a2e; }
+    .cur-badge {
+      display:inline-block; padding:1px 7px; background:#dcfce7; color:#166534;
+      border-radius:10px; font-size:10px; font-weight:600; margin-left:6px; vertical-align:middle;
+    }
+    .week-meta { font-size:12px; color:#aaa; }
+    .week-add-btn {
+      margin-left:auto; padding:4px 11px; background:transparent;
+      border:1px dashed #c8d5b9; border-radius:5px; font-family:inherit;
+      font-size:11px; color:#888; cursor:pointer; transition:all 0.15s;
+    }
+    .week-add-btn:hover { border-color:#34a853; color:#34a853; background:#f0fff4; }
+    .week-chevron { color:#ccc; font-size:10px; transition:transform 0.2s; margin-left:4px; }
+    .week-chevron.open { transform:rotate(90deg); }
+
+    .week-body { padding-left:6px; }
+    .week-body.collapsed { display:none; }
+
+    /* 퀵 추가 */
+    .quick-add-box {
+      background:#f0fff4; border:1px dashed #86efac; border-radius:8px;
+      padding:12px 14px; margin-bottom:8px; display:none;
+    }
+    .quick-add-box.open { display:block; }
+    .qa-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .qa-input {
+      flex:1; min-width:180px; padding:8px 10px; border:1px solid #d1fae5;
+      border-radius:6px; font-family:inherit; font-size:13px; background:white;
+    }
+    .qa-input:focus { outline:none; border-color:#34a853; }
+    .qa-select {
+      padding:8px 10px; border:1px solid #ddd; border-radius:6px;
+      font-family:inherit; font-size:12px; background:white;
+    }
+    .qa-submit {
+      padding:8px 16px; background:#34a853; color:white; border:none;
+      border-radius:6px; font-family:inherit; font-size:12px; cursor:pointer; white-space:nowrap;
+    }
+    .qa-submit:hover { background:#2d9144; }
+    .qa-cancel {
+      padding:8px 12px; background:#f5f5f5; border:none;
+      border-radius:6px; font-family:inherit; font-size:12px; cursor:pointer;
     }
 
+    /* 프로젝트 카드 */
+    .proj-card {
+      background:white; border-radius:8px; border:1px solid #e8e8e8;
+      margin-bottom:7px; overflow:hidden;
+      box-shadow:0 1px 3px rgba(0,0,0,0.04);
+      transition:box-shadow 0.15s;
+    }
+    .proj-card:hover { box-shadow:0 2px 8px rgba(0,0,0,0.09); }
+    .proj-head {
+      display:flex; align-items:center; gap:9px; padding:11px 14px;
+    }
+    .proj-name { font-weight:600; font-size:13px; flex:1; color:#1a1a2e; }
+    .proj-actions { display:flex; gap:5px; margin-left:auto; flex-shrink:0; }
+    .btn-edit-p {
+      padding:3px 10px; background:#f5f5f5; border:none; border-radius:4px;
+      font-family:inherit; font-size:11px; cursor:pointer; color:#555; transition:all 0.13s;
+    }
+    .btn-edit-p:hover { background:#e8e8e8; color:#1a1a2e; }
+    .btn-del-p {
+      padding:3px 9px; background:none; border:1px solid #fecaca;
+      border-radius:4px; font-family:inherit; font-size:11px; cursor:pointer; color:#e53e3e;
+    }
+    .btn-del-p:hover { background:#fff0f0; }
+    .btn-memo-p {
+      padding:3px 10px; background:none; border:1px solid #e8e8e8;
+      border-radius:4px; font-family:inherit; font-size:11px; cursor:pointer; color:#777;
+    }
+    .btn-memo-p:hover { background:#f0f4ff; border-color:#c5d3f5; color:#4285f4; }
+    .btn-memo-p.has-memo { background:#f0f4ff; border-color:#c5d3f5; color:#4285f4; }
+
+    /* 카드 바디 */
+    .proj-body { padding:0 14px 11px; }
+    .proj-progress { color:#444; font-size:12px; line-height:1.65; padding:4px 0 6px; white-space:pre-wrap; }
+    .chips-row { display:flex; gap:5px; flex-wrap:wrap; }
+    .chip {
+      display:inline-flex; align-items:center; gap:3px; padding:2px 8px;
+      border-radius:4px; font-size:11px; background:#f5f5f5; color:#555; white-space:nowrap;
+    }
+    .chip-lbl { color:#bbb; font-size:10px; }
+
+    /* 메모 박스 (카드 내부) */
+    .proj-memo {
+      border-top:1px solid #f0f4ff; background:#f8f9ff;
+      padding:10px 14px; display:none;
+    }
+    .proj-memo.open { display:block; }
+    .memo-lines { font-size:11px; color:#555; line-height:1.7; margin-bottom:8px; }
+    .memo-line { padding:1px 0; }
+    .memo-add-row { display:flex; gap:6px; }
+    .memo-inp {
+      flex:1; padding:5px 9px; border:1px solid #ddd; border-radius:4px;
+      font-family:inherit; font-size:12px;
+    }
+    .memo-inp:focus { outline:none; border-color:#4285f4; }
+    .memo-go { padding:5px 12px; background:#1a1a2e; color:white; border:none; border-radius:4px; font-family:inherit; font-size:11px; cursor:pointer; }
+
+    /* 편집 패널 */
+    .edit-panel { border-top:1px solid #dce4f5; background:#f8f9ff; padding:14px 14px; display:none; }
+    .edit-panel.open { display:block; }
+    .ef-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+    .ef-full { grid-column:1/-1; }
+    .ef { display:flex; flex-direction:column; gap:3px; }
+    .ef label { font-size:10px; font-weight:600; color:#888; }
+    .ef input, .ef select, .ef textarea {
+      padding:6px 8px; border:1px solid #ddd; border-radius:5px;
+      font-family:inherit; font-size:12px; background:white; transition:border-color 0.15s;
+    }
+    .ef input:focus, .ef select:focus, .ef textarea:focus { outline:none; border-color:#4285f4; }
+    .ef textarea { resize:vertical; min-height:56px; }
+    .edit-acts { display:flex; gap:7px; margin-top:10px; }
+    .btn-save { padding:6px 16px; background:#1a1a2e; color:white; border:none; border-radius:5px; font-family:inherit; font-size:12px; cursor:pointer; }
+    .btn-save:hover { background:#2d3561; }
+    .btn-cancel-edit { padding:6px 12px; background:#f5f5f5; border:none; border-radius:5px; font-family:inherit; font-size:12px; cursor:pointer; }
+
+    /* ── DASHBOARD ── */
+    .dashboard { }
+    .dash-head { display:flex; align-items:baseline; gap:12px; margin-bottom:20px; }
+    .dash-title { font-size:20px; font-weight:700; color:#1a1a2e; }
+    .dash-week { font-size:13px; color:#888; }
+
+    .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
+    .stat-card { background:white; border-radius:10px; padding:18px 20px; border:1px solid #e8e8e8; box-shadow:0 1px 4px rgba(0,0,0,0.05); }
+    .stat-label { font-size:11px; color:#aaa; font-weight:600; margin-bottom:4px; letter-spacing:0.3px; }
+    .stat-value { font-size:28px; font-weight:700; color:#1a1a2e; }
+    .stat-sub { font-size:11px; color:#bbb; margin-top:2px; }
+
+    .dash-charts { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:22px; }
+    .dash-card { background:white; border-radius:10px; padding:18px 20px; border:1px solid #e8e8e8; }
+    .dash-card-title { font-size:11px; font-weight:700; color:#aaa; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:14px; }
+
+    /* 바 차트 */
+    .bar-row { display:flex; align-items:center; gap:10px; margin-bottom:9px; }
+    .bar-name { font-size:12px; color:#444; min-width:54px; }
+    .bar-track { flex:1; height:9px; background:#f3f4f6; border-radius:5px; overflow:hidden; }
+    .bar-fill { height:100%; border-radius:5px; transition:width 0.5s ease; }
+    .bar-count { font-size:12px; color:#aaa; min-width:24px; text-align:right; }
+
+    /* 도넛 차트 */
+    .donut-wrap { display:flex; align-items:center; gap:18px; }
+    .donut-legend { display:flex; flex-direction:column; gap:6px; }
+    .legend-row { display:flex; align-items:center; gap:6px; font-size:11px; color:#555; }
+    .legend-dot { width:9px; height:9px; border-radius:2px; flex-shrink:0; }
+    .legend-cnt { color:#aaa; margin-left:auto; }
+
+    /* 담당자별 현황 */
+    .dash-people { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; margin-bottom:22px; }
+    .dash-person-card { background:white; border-radius:10px; padding:14px 16px; border:1px solid #e8e8e8; box-shadow:0 1px 4px rgba(0,0,0,0.04); }
+    .dash-person-head { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+    .dash-person-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+    .dash-person-name { font-size:13px; font-weight:700; color:#1a1a2e; }
+    .dash-person-cnt { font-size:11px; color:#aaa; margin-left:auto; }
+    .dash-task-row { padding:5px 0; border-bottom:1px solid #f5f5f5; display:flex; align-items:flex-start; gap:7px; }
+    .dash-task-row:last-child { border-bottom:none; }
+    .dash-task-name { font-size:12px; color:#333; flex:1; }
+    .dash-task-prog { font-size:11px; color:#aaa; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; }
+
     /* 공통 */
-    .empty-state { text-align: center; padding: 40px; color: #bbb; font-size: 13px; }
-    .hidden { display: none !important; }
+    .empty-state { text-align:center; padding:40px; color:#bbb; font-size:13px; }
+    .hidden { display:none !important; }
 
     /* ── Excel 가져오기 모달 ── */
     .xl-overlay {
@@ -403,14 +574,13 @@ function renderTabs() {
       `<div class="tab ${activeTab===uid?'active':''}" onclick="switchTab('${uid}')">
         <span class="tab-dot" style="background:${u.color||'#999'}"></span>${esc(u.name)}
       </div>`).join('') +
-    `<div class="tab ${activeTab==='all'?'active':''}" onclick="switchTab('all')">전체 보기</div>`;
+    `<div class="tab ${activeTab==='all'?'active':''}" onclick="switchTab('all')">📊 DASHBOARD</div>`;
 }
 window.switchTab = id => { activeTab = id; renderTabs(); renderBoard(); };
 
 // ── 보드 렌더 ────────────────────────────────────────────────
 function renderBoard() {
-  $('boardContent').innerHTML = activeTab === 'all' ? renderAll() : renderUser(activeTab);
-  attachMemo(); attachDrag();
+  $('boardContent').innerHTML = activeTab === 'all' ? renderDashboard() : renderUser(activeTab);
 }
 
 // ── 색상 테이블 ──────────────────────────────────────────────
@@ -427,170 +597,363 @@ function fmtTs(ts) {
   return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
-// ── 단일 유저 뷰 ─────────────────────────────────────────────
+// ── 주차 관련 유틸 ───────────────────────────────────────────
+function currentWeekLabel() {
+  const now = new Date();
+  const m = now.getMonth(), d = now.getDate();
+  const firstDay = new Date(now.getFullYear(), m, 1).getDay();
+  return `${m+1}월 ${Math.ceil((d+firstDay)/7)}주차`;
+}
+function taskWeekLabel(t) {
+  if (t.weekLabel) return t.weekLabel;
+  if (!t.updatedAt) return '이전 데이터';
+  const dt = new Date(t.updatedAt);
+  const m = dt.getMonth(), d = dt.getDate();
+  const firstDay = new Date(dt.getFullYear(), m, 1).getDay();
+  return `${m+1}월 ${Math.ceil((d+firstDay)/7)}주차`;
+}
+function weekToNum(wl) {
+  const r = wl.match(/(\d+)월\s*(\d+)주차/);
+  return r ? parseInt(r[1])*100 + parseInt(r[2]) : 0;
+}
+
+// 주차별 아코디언 상태 관리 (렌더 간 유지)
+const collapsedWeeks = new Set();
+
+// ── 단일 유저 뷰 (릴리즈 노트 스타일) ───────────────────────
 function renderUser(uid) {
   const u = allUsers[uid];
   if (!u) return '<div class="empty-state">사용자를 찾을 수 없습니다.</div>';
   const isOwn = uid === currentProfile.id;
   const tasks = sortedTasks(uid);
+  const thisWeek = currentWeekLabel();
+
+  // 주차별 그룹핑
+  const byWeek = {};
+  tasks.forEach(([tid, t]) => {
+    const wl = taskWeekLabel(t);
+    if (!byWeek[wl]) byWeek[wl] = [];
+    byWeek[wl].push([tid, t]);
+  });
+  if (!byWeek[thisWeek]) byWeek[thisWeek] = [];
+
+  const weeks = Object.keys(byWeek).sort((a,b) => {
+    if (a === thisWeek) return -1;
+    if (b === thisWeek) return 1;
+    return weekToNum(b) - weekToNum(a);
+  });
+
   return `
-    <div class="section-header">
-      <div class="section-title">${esc(u.name)} ${u.title?'· '+esc(u.title):''} ${u.department?'('+esc(u.department)+')':''}</div>
-      ${isOwn ? `<button class="btn-add" onclick="addTask('${uid}')">+ 업무 추가</button>` : ''}
+    <div class="rn-person-head">
+      <span class="rn-dot" style="background:${u.color||'#999'}"></span>
+      <span class="rn-person-name">${esc(u.name)}${u.title?`<span class="rn-title">${esc(u.title)}</span>`:''}</span>
+      <span class="rn-dept">${esc(u.department||'')}</span>
     </div>
-    <div class="table-wrap"><table>
-      <thead><tr>
-        ${isOwn?'<th style="width:28px"></th>':''}
-        <th style="min-width:140px">프로젝트명</th><th style="width:88px">진행구분</th>
-        <th style="min-width:190px">진행상황</th><th style="width:80px">도면상태</th>
-        <th style="width:105px">금액</th><th style="width:88px">실행일정</th>
-        <th style="width:88px">협력업체</th><th style="width:100px">비고</th>
-        <th style="width:64px">메모</th><th style="width:80px">수정</th>
-        ${isOwn?'<th style="width:34px"></th>':''}
-      </tr></thead>
-      <tbody id="tbody-${uid}">
-        ${tasks.length ? tasks.map(([tid,t])=>rowHtml(uid,tid,t,isOwn)).join('')
-          : `<tr><td colspan="${isOwn?12:10}" class="empty-state">업무 항목이 없습니다.</td></tr>`}
-      </tbody>
-    </table></div>`;
+    ${weeks.map(wl => renderWeekSection(uid, wl, byWeek[wl], isOwn, wl===thisWeek)).join('')}`;
 }
 
-function rowHtml(uid, tid, t, isOwn) {
-  const memoCount = t.memo ? t.memo.trim().split('\n').filter(Boolean).length : 0;
-  const hasMemo = memoCount > 0;
-  if (isOwn) {
-    return `
-      <tr data-uid="${uid}" data-tid="${tid}" draggable="true">
-        <td><span class="drag-handle">⠿</span></td>
-        <td><input class="editable" value="${esc(t.projectName||'')}" placeholder="프로젝트명" onblur="saveField('${uid}','${tid}','projectName',this.value)"></td>
-        <td><select class="editable" onchange="saveField('${uid}','${tid}','category',this.value)">
-          ${CATS.map(c=>`<option value="${c}" ${t.category===c?'selected':''}>${c}</option>`).join('')}
-        </select></td>
-        <td><textarea class="editable" rows="2" placeholder="진행상황" onblur="saveField('${uid}','${tid}','progress',this.value)">${esc(t.progress||'')}</textarea></td>
-        <td><select class="editable" onchange="saveField('${uid}','${tid}','drawingStatus',this.value)">
-          ${DRAWS.map(s=>`<option value="${s}" ${t.drawingStatus===s?'selected':''}>${s}</option>`).join('')}
-        </select></td>
-        <td><input class="editable" type="number" placeholder="0" value="${t.amount||''}" onblur="saveField('${uid}','${tid}','amount',this.value)"></td>
-        <td><input class="editable" placeholder="일정" value="${esc(t.schedule||'')}" onblur="saveField('${uid}','${tid}','schedule',this.value)"></td>
-        <td><input class="editable" placeholder="업체명" value="${esc(t.partner||'')}" onblur="saveField('${uid}','${tid}','partner',this.value)"></td>
-        <td><input class="editable" placeholder="비고" value="${esc(t.notes||'')}" onblur="saveField('${uid}','${tid}','notes',this.value)"></td>
-        <td><button class="memo-btn ${hasMemo?'has-memo':''}" data-uid="${uid}" data-tid="${tid}">💬 ${memoCount}</button></td>
-        <td class="meta">${esc(t.updatedBy||'')}<br>${fmtTs(t.updatedAt)}</td>
-        <td><button class="btn-del" onclick="delTask('${uid}','${tid}')">×</button></td>
-      </tr>
-      <tr class="memo-row hidden" id="memo-${uid}-${tid}"><td colspan="12">${memoBox(uid,tid,t,true)}</td></tr>`;
-  } else {
-    const catBg = CAT_BG[t.category]||'#f3f4f6', catFg = CAT_FG[t.category]||'#374151';
-    const drBg  = DRAW_BG[t.drawingStatus]||'#f3f4f6';
-    return `
-      <tr data-uid="${uid}" data-tid="${tid}">
-        <td>${esc(t.projectName||'')}</td>
-        <td><span class="cat-badge" style="background:${catBg};color:${catFg}">${esc(t.category||'')}</span></td>
-        <td style="white-space:pre-wrap;line-height:1.5">${esc(t.progress||'')}</td>
-        <td><span class="draw-badge" style="background:${drBg}">${esc(t.drawingStatus||'—')}</span></td>
-        <td style="white-space:nowrap">${fmtAmount(t.amount)}</td>
-        <td>${esc(t.schedule||'')}</td><td>${esc(t.partner||'')}</td><td>${esc(t.notes||'')}</td>
-        <td><button class="memo-btn ${hasMemo?'has-memo':''}" data-uid="${uid}" data-tid="${tid}">💬 ${memoCount}</button></td>
-        <td class="meta">${esc(t.updatedBy||'')}<br>${fmtTs(t.updatedAt)}</td>
-      </tr>
-      <tr class="memo-row hidden" id="memo-${uid}-${tid}"><td colspan="10">${memoBox(uid,tid,t,false)}</td></tr>`;
-  }
+function renderWeekSection(uid, weekLabel, weekTasks, isOwn, isCurrentWeek) {
+  const wKey = weekLabel.replace(/\s/g,'_');
+  const isCollapsed = collapsedWeeks.has(`${uid}|${weekLabel}`);
+
+  // 프로젝트명으로 그룹핑
+  const byProj = {};
+  weekTasks.forEach(([tid,t]) => {
+    const pn = t.projectName || '(제목 없음)';
+    if (!byProj[pn]) byProj[pn] = [];
+    byProj[pn].push([tid,t]);
+  });
+
+  return `
+    <div class="week-section">
+      <div class="week-header" onclick="toggleWeek('${uid}','${weekLabel}')">
+        <div class="week-dot${isCurrentWeek?' current':''}"></div>
+        <span class="week-label">${esc(weekLabel)}${isCurrentWeek?'<span class="cur-badge">이번 주</span>':''}</span>
+        <span class="week-meta">${weekTasks.length}건</span>
+        ${isOwn&&isCurrentWeek ? `<button class="week-add-btn" onclick="event.stopPropagation();toggleQuickAdd('${uid}','${wKey}')">+ 업무 추가</button>` : ''}
+        <span class="week-chevron${isCollapsed?'':' open'}">▶</span>
+      </div>
+      <div class="week-body${isCollapsed?' collapsed':''}" id="wb-${uid}-${wKey}">
+        <div class="quick-add-box${isCurrentWeek&&isOwn?' ':'hidden'}" id="qa-${uid}-${wKey}">
+          <div class="qa-row">
+            <input class="qa-input" id="qai-${uid}-${wKey}" placeholder="프로젝트명 입력..."
+              onkeydown="if(event.key==='Enter')quickAdd('${uid}','${weekLabel}')">
+            <select class="qa-select" id="qas-${uid}-${wKey}">
+              ${CATS.map(c=>`<option>${c}</option>`).join('')}
+            </select>
+            <button class="qa-submit" onclick="quickAdd('${uid}','${weekLabel}')">추가</button>
+            <button class="qa-cancel" onclick="toggleQuickAdd('${uid}','${wKey}')">취소</button>
+          </div>
+        </div>
+        ${!weekTasks.length ? `<div class="empty-state" style="padding:18px;font-size:12px">업무 항목이 없습니다.<br>${isOwn?'위 + 버튼으로 추가하세요.':''}</div>` : ''}
+        ${Object.entries(byProj).map(([pn,ptasks]) => renderProjCard(uid, pn, ptasks, isOwn)).join('')}
+      </div>
+    </div>`;
 }
 
-function memoBox(uid, tid, t, editable) {
-  const lines = t.memo ? t.memo.trim().split('\n').filter(Boolean) : [];
-  return `<div class="memo-box">
-    <div class="memo-entries">${lines.length
-      ? lines.map(l=>`<div class="memo-entry">${esc(l)}</div>`).join('')
-      : '<span style="color:#bbb">메모 없음</span>'}</div>
-    ${editable ? `<div class="memo-input-row">
-      <input class="memo-input" id="mi-${uid}-${tid}" placeholder="메모 입력 후 Enter"
-        onkeydown="if(event.key==='Enter')addMemo('${uid}','${tid}')">
-      <button class="memo-submit" onclick="addMemo('${uid}','${tid}')">추가</button>
-    </div>` : ''}
+function renderProjCard(uid, projName, tasks, isOwn) {
+  const isMulti = tasks.length > 1;
+  const [[tid0, t0]] = tasks;
+  return `
+    <div class="proj-card">
+      <div class="proj-head">
+        <span class="cat-badge" style="background:${CAT_BG[t0.category]||'#f3f4f6'};color:${CAT_FG[t0.category]||'#374151'}">${esc(t0.category||'실행')}</span>
+        <span class="proj-name">${esc(projName)}</span>
+        ${isOwn ? `<div class="proj-actions">
+          <button class="btn-memo-p${t0.memo?' has-memo':''}" onclick="toggleMemoP('${uid}','${tid0}')">💬</button>
+          <button class="btn-edit-p" onclick="toggleEditP('${uid}','${tid0}')">편집</button>
+          <button class="btn-del-p" onclick="delTask('${uid}','${tid0}')">삭제</button>
+        </div>` : ''}
+      </div>
+      ${tasks.map(([tid,t]) => `
+        <div class="proj-body">
+          ${isMulti ? `<div style="margin-bottom:4px"><span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};font-size:10px">${esc(t.category)}</span></div>` : ''}
+          ${t.progress ? `<div class="proj-progress">${esc(t.progress)}</div>` : ''}
+          <div class="chips-row">
+            ${t.drawingStatus&&t.drawingStatus!=='—'?`<span class="chip"><span class="chip-lbl">도면</span>${esc(t.drawingStatus)}</span>`:''}
+            ${t.amount?`<span class="chip"><span class="chip-lbl">금액</span>${fmtAmount(t.amount)}</span>`:''}
+            ${t.schedule?`<span class="chip"><span class="chip-lbl">일정</span>${esc(t.schedule)}</span>`:''}
+            ${t.partner?`<span class="chip"><span class="chip-lbl">협력</span>${esc(t.partner)}</span>`:''}
+            ${t.notes?`<span class="chip"><span class="chip-lbl">비고</span>${esc(t.notes)}</span>`:''}
+            <span class="chip" style="background:#f0f4ff;color:#888"><span class="chip-lbl">수정</span>${esc(t.updatedBy||'')} ${fmtTs(t.updatedAt)}</span>
+          </div>
+        </div>
+        ${isOwn ? `
+        <div class="proj-memo" id="pm-${uid}-${tid}">
+          <div class="memo-lines" id="ml-${uid}-${tid}">
+            ${(t.memo||'').trim().split('\n').filter(Boolean).map(l=>`<div class="memo-line">${esc(l)}</div>`).join('') || '<span style="color:#ccc;font-size:11px">메모 없음</span>'}
+          </div>
+          <div class="memo-add-row">
+            <input class="memo-inp" id="mi-${uid}-${tid}" placeholder="메모 추가..."
+              onkeydown="if(event.key==='Enter')addMemo('${uid}','${tid}')">
+            <button class="memo-go" onclick="addMemo('${uid}','${tid}')">추가</button>
+          </div>
+        </div>
+        <div class="edit-panel" id="ep-${uid}-${tid}">
+          <div class="ef-grid">
+            <div class="ef ef-full"><label>프로젝트명</label>
+              <input id="ef-proj-${tid}" value="${esc(t.projectName||'')}"></div>
+            <div class="ef"><label>진행구분</label>
+              <select id="ef-cat-${tid}">${CATS.map(c=>`<option${t.category===c?' selected':''}>${c}</option>`).join('')}</select></div>
+            <div class="ef"><label>도면상태</label>
+              <select id="ef-draw-${tid}">${DRAWS.map(s=>`<option${t.drawingStatus===s?' selected':''}>${s}</option>`).join('')}</select></div>
+            <div class="ef ef-full"><label>진행상황</label>
+              <textarea id="ef-prog-${tid}" rows="3">${esc(t.progress||'')}</textarea></div>
+            <div class="ef"><label>금액</label>
+              <input id="ef-amt-${tid}" type="number" value="${t.amount||''}"></div>
+            <div class="ef"><label>실행일정</label>
+              <input id="ef-sch-${tid}" value="${esc(t.schedule||'')}"></div>
+            <div class="ef"><label>협력업체</label>
+              <input id="ef-par-${tid}" value="${esc(t.partner||'')}"></div>
+            <div class="ef"><label>비고</label>
+              <input id="ef-notes-${tid}" value="${esc(t.notes||'')}"></div>
+          </div>
+          <div class="edit-acts">
+            <button class="btn-save" onclick="saveEditP('${uid}','${tid}')">저장</button>
+            <button class="btn-cancel-edit" onclick="toggleEditP('${uid}','${tid}')">취소</button>
+          </div>
+        </div>` : ''}
+      `).join('')}
+    </div>`;
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────
+function renderDashboard() {
+  const thisWeek = currentWeekLabel();
+  const users = Object.entries(allUsers).sort((a,b)=>(a[1].name||'').localeCompare(b[1].name||''));
+  if (!users.length) return '<div class="empty-state">등록된 사용자가 없습니다.</div>';
+
+  // 이번 주 업무만 집계
+  let totalAll=0, totalDone=0, totalProp=0;
+  const catCount = {};
+  const personData = users.map(([uid,u]) => {
+    const tasks = sortedTasks(uid).filter(([,t]) => taskWeekLabel(t) === thisWeek);
+    totalAll += tasks.length;
+    tasks.forEach(([,t]) => {
+      if (t.category==='완료') totalDone++;
+      if (t.category==='제안') totalProp++;
+      catCount[t.category||'기타'] = (catCount[t.category||'기타']||0)+1;
+    });
+    return { uid, u, tasks };
+  });
+
+  const maxCount = Math.max(...personData.map(p=>p.tasks.length), 1);
+
+  // 도넛 차트 데이터
+  const catOrder = ['실행','제안','신규','완료','도면','제작','테스트','개발','기술지원','기타'];
+  const pieData = catOrder.filter(c=>catCount[c]).map(c=>({ label:c, value:catCount[c], bg:CAT_BG[c]||'#f3f4f6', fg:CAT_FG[c]||'#374151' }));
+
+  return `<div class="dashboard">
+    <div class="dash-head">
+      <div class="dash-title">DASHBOARD</div>
+      <div class="dash-week">${thisWeek} 기준</div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">이번 주 전체</div>
+        <div class="stat-value">${totalAll}</div>
+        <div class="stat-sub">건</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">완료</div>
+        <div class="stat-value" style="color:#166534">${totalDone}</div>
+        <div class="stat-sub">건</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">제안</div>
+        <div class="stat-value" style="color:#92400e">${totalProp}</div>
+        <div class="stat-sub">건</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">진행중</div>
+        <div class="stat-value" style="color:#1d4ed8">${totalAll-totalDone-totalProp}</div>
+        <div class="stat-sub">건</div>
+      </div>
+    </div>
+
+    <div class="dash-charts">
+      <div class="dash-card">
+        <div class="dash-card-title">담당자별 업무 수</div>
+        ${personData.map(({u,tasks}) => `
+          <div class="bar-row">
+            <div class="bar-name">${esc(u.name)}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.round(tasks.length/maxCount*100)}%;background:${u.color||'#999'}"></div></div>
+            <div class="bar-count">${tasks.length}</div>
+          </div>`).join('')}
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">진행구분 분포</div>
+        ${pieData.length ? `<div class="donut-wrap">
+          ${makePie(pieData, totalAll)}
+          <div class="donut-legend">
+            ${pieData.map(d=>`<div class="legend-row">
+              <div class="legend-dot" style="background:${d.bg};border:1px solid ${d.fg}40"></div>
+              <span>${d.label}</span><span class="legend-cnt">${d.value}</span>
+            </div>`).join('')}
+          </div>
+        </div>` : '<div style="color:#ccc;text-align:center;padding:20px;font-size:12px">데이터 없음</div>'}
+      </div>
+    </div>
+
+    <div class="dash-card-title" style="margin-bottom:12px">담당자별 이번 주 현황</div>
+    <div class="dash-people">
+      ${personData.map(({uid,u,tasks}) => `
+        <div class="dash-person-card">
+          <div class="dash-person-head">
+            <div class="dash-person-dot" style="background:${u.color||'#999'}"></div>
+            <div class="dash-person-name">${esc(u.name)}${u.title?`<span style="font-weight:400;color:#aaa;font-size:11px;margin-left:4px">${esc(u.title)}</span>`:''}</div>
+            <div class="dash-person-cnt">${tasks.length}건</div>
+          </div>
+          ${tasks.length ? tasks.map(([,t])=>`
+            <div class="dash-task-row">
+              <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};flex-shrink:0">${esc(t.category||'실행')}</span>
+              <div>
+                <div class="dash-task-name">${esc(t.projectName||'(제목 없음)')}</div>
+                ${t.progress?`<div class="dash-task-prog">${esc(t.progress.split('\n')[0])}</div>`:''}
+              </div>
+            </div>`).join('')
+          : '<div style="font-size:11px;color:#ccc;padding:8px 0">업무 없음</div>'}
+        </div>`).join('')}
+    </div>
   </div>`;
 }
 
-// ── 전체 보기 ────────────────────────────────────────────────
-function renderAll() {
-  const sorted = Object.entries(allUsers).sort((a,b)=>(a[1].name||'').localeCompare(b[1].name||''));
-  if (!sorted.length) return '<div class="empty-state">등록된 사용자가 없습니다.</div>';
-  return sorted.map(([uid,u]) => {
-    const tasks = sortedTasks(uid);
-    return `<div class="all-section">
-      <div class="all-section-head">
-        <span class="all-user-badge" style="background:${u.color||'#999'}">${esc(u.name)} ${u.title?esc(u.title):''}</span>
-        <span style="font-size:12px;color:#888">${esc(u.department||'')} · ${tasks.length}건</span>
-      </div>
-      <div class="table-wrap"><table>
-        <thead><tr>
-          <th style="min-width:140px">프로젝트명</th><th style="width:88px">진행구분</th>
-          <th style="min-width:190px">진행상황</th><th style="width:80px">도면상태</th>
-          <th style="width:105px">금액</th><th style="width:88px">실행일정</th>
-          <th style="width:88px">협력업체</th><th style="width:100px">비고</th>
-          <th style="width:64px">메모</th><th style="width:80px">수정</th>
-        </tr></thead>
-        <tbody>${tasks.length
-          ? tasks.map(([tid,t])=>rowHtml(uid,tid,t,false)).join('')
-          : '<tr><td colspan="10" class="empty-state" style="padding:14px">업무 없음</td></tr>'}
-        </tbody>
-      </table></div>
-    </div>`;
+function makePie(data, total) {
+  if (!total) return '';
+  const r=55, ir=28, cx=65, cy=65;
+  let ang = -Math.PI/2;
+  const paths = data.map(d => {
+    const frac = d.value/total;
+    const a1=ang, a2=ang+frac*Math.PI*2; ang=a2;
+    const x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);
+    const x2=cx+r*Math.cos(a2),y2=cy+r*Math.sin(a2);
+    const ix1=cx+ir*Math.cos(a1),iy1=cy+ir*Math.sin(a1);
+    const ix2=cx+ir*Math.cos(a2),iy2=cy+ir*Math.sin(a2);
+    const lg = frac>0.5?1:0;
+    return `<path d="M${x1},${y1} A${r},${r} 0 ${lg},1 ${x2},${y2} L${ix2},${iy2} A${ir},${ir} 0 ${lg},0 ${ix1},${iy1} Z" fill="${d.bg}" stroke="${d.fg}22" stroke-width="1"/>`;
   }).join('');
+  return `<svg width="130" height="130" viewBox="0 0 130 130" style="flex-shrink:0">${paths}
+    <text x="${cx}" y="${cy+1}" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="700" fill="#1a1a2e">${total}</text>
+    <text x="${cx}" y="${cy+16}" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="#aaa">건</text>
+  </svg>`;
 }
 
-// ── 메모 토글 ────────────────────────────────────────────────
-function attachMemo() {
-  document.querySelectorAll('.memo-btn').forEach(btn => {
-    btn.onclick = () => { const r = $(`memo-${btn.dataset.uid}-${btn.dataset.tid}`); if(r) r.classList.toggle('hidden'); };
+// ── CRUD & 인터랙션 ──────────────────────────────────────────
+
+// 주차 아코디언 토글 (DOM 직접 조작, 재렌더 없음)
+window.toggleWeek = (uid, weekLabel) => {
+  const key = `${uid}|${weekLabel}`;
+  const wKey = weekLabel.replace(/\s/g,'_');
+  const body = document.getElementById(`wb-${uid}-${wKey}`);
+  if (!body) return;
+  const collapsed = body.classList.toggle('collapsed');
+  const chev = body.previousElementSibling?.querySelector('.week-chevron');
+  if (chev) chev.classList.toggle('open', !collapsed);
+  collapsed ? collapsedWeeks.add(key) : collapsedWeeks.delete(key);
+};
+
+// 퀵 추가 박스 토글
+window.toggleQuickAdd = (uid, wKey) => {
+  const box = document.getElementById(`qa-${uid}-${wKey}`);
+  if (!box) return;
+  const isOpen = box.classList.toggle('open');
+  if (isOpen) document.getElementById(`qai-${uid}-${wKey}`)?.focus();
+};
+
+// 퀵 추가 실행
+window.quickAdd = (uid, weekLabel) => {
+  const wKey = weekLabel.replace(/\s/g,'_');
+  const inp = document.getElementById(`qai-${uid}-${wKey}`);
+  const sel = document.getElementById(`qas-${uid}-${wKey}`);
+  const projName = inp?.value.trim();
+  if (!projName) { inp?.focus(); return; }
+  push(ref(db, `tasks/${uid}`), {
+    projectName: projName, category: sel?.value||'실행',
+    progress:'', drawingStatus:'—', amount:'', schedule:'', partner:'', notes:'', memo:'',
+    weekLabel, order: Date.now(), updatedBy: currentProfile.name, updatedAt: Date.now()
   });
-}
+  if (inp) inp.value = '';
+};
 
-// ── 드래그 정렬 ──────────────────────────────────────────────
-function attachDrag() {
-  let src = null;
-  document.querySelectorAll('tr[draggable="true"]').forEach(row => {
-    row.addEventListener('dragstart', () => { src=row; row.classList.add('dragging'); });
-    row.addEventListener('dragend',   () => { row.classList.remove('dragging'); document.querySelectorAll('.drag-over').forEach(r=>r.classList.remove('drag-over')); });
-    row.addEventListener('dragover',  e => { e.preventDefault(); if(src&&src!==row) row.classList.add('drag-over'); });
-    row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
-    row.addEventListener('drop', e => {
-      e.preventDefault(); if(!src||src===row) return;
-      row.classList.remove('drag-over');
-      const uid = row.dataset.uid;
-      const rows = [...row.closest('tbody').querySelectorAll('tr[data-tid]')];
-      rows.splice(rows.indexOf(src),1); rows.splice(rows.indexOf(row),0,src);
-      const upd = {};
-      rows.forEach((r,i) => { upd[`tasks/${uid}/${r.dataset.tid}/order`] = i; });
-      update(ref(db), upd);
-    });
-  });
-}
+// 편집 패널 토글
+window.toggleEditP = (uid, tid) => {
+  document.getElementById(`ep-${uid}-${tid}`)?.classList.toggle('open');
+};
 
-// ── CRUD ─────────────────────────────────────────────────────
-window.addTask = uid => push(ref(db, `tasks/${uid}`), {
-  projectName:'', category:'실행', progress:'', drawingStatus:'—',
-  amount:'', schedule:'', partner:'', notes:'', memo:'',
-  order: Date.now(), updatedBy: currentProfile.name, updatedAt: Date.now()
-});
-
-window.saveField = (uid, tid, field, value) => {
-  const val = field==='amount' ? (value===''?'':Number(value)||0) : value;
+// 편집 저장
+window.saveEditP = (uid, tid) => {
+  const g = s => document.getElementById(`ef-${s}-${tid}`)?.value ?? '';
+  const amt = g('amt');
   update(ref(db), {
-    [`tasks/${uid}/${tid}/${field}`]: val,
-    [`tasks/${uid}/${tid}/updatedBy`]: currentProfile.name,
-    [`tasks/${uid}/${tid}/updatedAt`]: Date.now()
+    [`tasks/${uid}/${tid}/projectName`]:  g('proj'),
+    [`tasks/${uid}/${tid}/category`]:     g('cat'),
+    [`tasks/${uid}/${tid}/drawingStatus`]:g('draw'),
+    [`tasks/${uid}/${tid}/progress`]:     g('prog'),
+    [`tasks/${uid}/${tid}/amount`]:       amt===''?'':Number(amt)||0,
+    [`tasks/${uid}/${tid}/schedule`]:     g('sch'),
+    [`tasks/${uid}/${tid}/partner`]:      g('par'),
+    [`tasks/${uid}/${tid}/notes`]:        g('notes'),
+    [`tasks/${uid}/${tid}/updatedBy`]:    currentProfile.name,
+    [`tasks/${uid}/${tid}/updatedAt`]:    Date.now()
   });
 };
 
+// 메모 박스 토글
+window.toggleMemoP = (uid, tid) => {
+  document.getElementById(`pm-${uid}-${tid}`)?.classList.toggle('open');
+};
+
+// 삭제
 window.delTask = (uid, tid) => {
   if (!confirm('업무 항목을 삭제할까요?')) return;
   remove(ref(db, `tasks/${uid}/${tid}`));
 };
 
+// 메모 추가
 window.addMemo = (uid, tid) => {
-  const input = $(`mi-${uid}-${tid}`);
-  const text = input.value.trim();
+  const inp = document.getElementById(`mi-${uid}-${tid}`);
+  const text = inp?.value.trim();
   if (!text) return;
   const now = new Date();
   const ts = `${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -600,7 +963,7 @@ window.addMemo = (uid, tid) => {
     memo: prev ? prev+'\n'+entry : entry,
     updatedBy: currentProfile.name, updatedAt: Date.now()
   });
-  input.value = '';
+  if (inp) inp.value = '';
 };
 
 // ── 유틸 ─────────────────────────────────────────────────────
@@ -909,6 +1272,7 @@ window.confirmImport = async () => {
       const newRef = push(ref(db, `tasks/${uid}`));
       updates[`tasks/${uid}/${newRef.key}`] = {
         ...t, memo: '',
+        weekLabel: currentWeekLabel(),
         order: Date.now() + count,
         updatedBy: currentProfile.name,
         updatedAt: Date.now()
