@@ -1675,7 +1675,7 @@ window.openProjHistPopup = (uid, projName) => {
       <div style="margin-bottom:14px">
         <div style="font-size:10px;font-weight:700;color:#aaa;letter-spacing:0.5px;padding:4px 0;border-bottom:1px solid #f0f0f0;margin-bottom:6px">${esc(wl)}</div>
         ${byWeek[wl].map(({tid,t,ownerUid}) => {
-          const canEdit = ownerUid === currentProfile?.id;
+          const canEdit = ownerUid === currentProfile?.id || currentProfile?.admin === true;
           const u = allUsers[ownerUid];
           return `
           <div style="padding:7px 0;border-bottom:1px solid #f8f8f8">
