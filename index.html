@@ -1425,13 +1425,21 @@ function detectCols(row) {
   return (found.person !== undefined && found.project !== undefined) ? found : null;
 }
 
+// "N월 M주차" → 비교용 숫자 (클수록 최신)
+function weekOrder(wl) {
+  if (!wl) return 0;
+  const m = wl.match(/(\d+)월\s*(\d+)주차/);
+  return m ? parseInt(m[1]) * 10 + parseInt(m[2]) : 0;
+}
+
 // Excel 전체 파싱
 // 구조: 헤더 행(row 0) → 데이터 행. expandMerges 덕에 각 행에 담당자가 직접 채워져 있음.
 // 유형 = "전달사항" 또는 담당자 = "전달사항"인 행은 공지 행으로 스킵.
-// Returns { parsed: [{name, tasks[]}], debug: {...} }
+// 동일 담당자 + 동일 프로젝트명이 여러 주차에 있으면 최신 주차만 유지 (중복 제거).
+// Returns { parsed: [{name, tasks[], original, dupeCount}], debug: {...} }
 function parseExcel(rows) {
   let cols = null;
-  const result = {};
+  const result = {}; // { personName: task[] }
   let dataRows = 0, headerFound = false;
   const SKIP_NAMES = ['담당자','프로젝트명','건명','소계','합계','전달사항'];
 
@@ -1448,7 +1456,6 @@ function parseExcel(rows) {
         console.log('[XL] 헤더 감지 row[' + i + ']:', detected);
         continue;
       }
-      // 10행 안에서 헤더 못 찾으면 기본값 사용
       if (i === 10) cols = DEFAULT_COLS;
       else continue;
     }
@@ -1458,20 +1465,15 @@ function parseExcel(rows) {
     const personVal = String(row[cols.person]  || '').trim();
     const projVal   = String(row[cols.project] || '').trim();
 
-    // 전달사항 행 스킵
     if (typeVal === '전달사항' || personVal === '전달사항') continue;
-    // 담당자·프로젝트 없는 행 스킵
     if (!personVal || !projVal) continue;
-    // 헤더/소계 잔류 행 스킵
     if (SKIP_NAMES.includes(personVal) || SKIP_NAMES.includes(projVal)) continue;
 
     dataRows++;
-    // 비고 + 추가메모 합치기
     const notesA = String(row[cols.notes]   || '').trim();
     const notesB = String(row[cols.addMemo] || '').trim();
     const notes  = [notesA, notesB].filter(Boolean).join(' / ');
 
-    // 주차 컬럼에서 weekLabel 추출 (expandMerges로 각 행에 채워진 값)
     const weekRaw = String(row[cols.week] || '').trim();
     const weekLabelVal = weekRaw.includes('주차') ? weekRaw : currentWeekLabel();
 
@@ -1491,9 +1493,25 @@ function parseExcel(rows) {
     result[personVal].push(task);
   }
 
-  const parsed = Object.entries(result).map(([name, tasks]) => ({ name, tasks }));
-  const debug  = { totalRows: rows.length, dataRows, headerFound,
-                   colsUsed: cols || DEFAULT_COLS, persons: Object.keys(result) };
+  // ── 중복 제거: 같은 담당자 내 동일 프로젝트명 → 최신 주차만 유지 ──
+  // 엑셀이 매 주차 복사 방식이므로 이전 주차 동일 항목은 최신으로 덮어씀
+  let totalDupes = 0;
+  const parsed = Object.entries(result).map(([name, tasks]) => {
+    const deduped = {}; // key: 프로젝트명(소문자) → task
+    for (const task of tasks) {
+      const key = task.projectName.trim().toLowerCase();
+      if (!deduped[key] || weekOrder(task.weekLabel) >= weekOrder(deduped[key].weekLabel)) {
+        deduped[key] = task;
+      }
+    }
+    const dedupedTasks = Object.values(deduped);
+    const dupeCount = tasks.length - dedupedTasks.length;
+    totalDupes += dupeCount;
+    return { name, tasks: dedupedTasks, original: tasks.length, dupeCount };
+  });
+
+  const debug = { totalRows: rows.length, dataRows, headerFound, totalDupes,
+                  colsUsed: cols || DEFAULT_COLS, persons: Object.keys(result) };
   return { parsed, debug };
 }
 
@@ -1516,14 +1534,16 @@ function renderImportError(debug) {
 // ── 미리보기 렌더 ─────────────────────────────────────────────
 function renderImport() {
   const totalTasks = xlParsed.reduce((s, g) => s + g.tasks.length, 0);
+  const totalDupes = xlParsed.reduce((s, g) => s + (g.dupeCount||0), 0);
   const userOpts = Object.entries(allUsers)
-    .sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''))
+    .sort((a,b) => (a[1].order||999) - (b[1].order||999))
     .map(([id,u]) => `<option value="${id}">${esc(u.name)}</option>`).join('');
 
   $('xlBody').innerHTML = `
     <div class="xl-info">
-      <strong>${xlParsed.length}명</strong> · <strong>${totalTasks}건</strong> 인식됨 &nbsp;|&nbsp;
-      담당자명이 보드 사용자와 자동 매칭됩니다. 체크박스로 항목을 선택/제외하세요.
+      <strong>${xlParsed.length}명</strong> · <strong>${totalTasks}건</strong> 인식됨
+      ${totalDupes ? `&nbsp;<span style="color:#e53e3e;font-size:11px">(중복 ${totalDupes}건 제거됨 — 최신 주차 데이터만 유지)</span>` : ''}
+      &nbsp;|&nbsp; 담당자명이 보드 사용자와 자동 매칭됩니다. 체크박스로 항목을 선택/제외하세요.
     </div>
     ${xlParsed.map((g, gi) => {
       const autoId = Object.entries(allUsers).find(([,u]) => u.name === g.name)?.[0] || '';
@@ -1541,6 +1561,7 @@ function renderImport() {
               ${userOpts}
             </select>
             ${!matched ? '<span style="font-size:11px;color:#e53e3e">⚠ 매칭 필요</span>' : ''}
+            ${g.dupeCount ? `<span style="font-size:11px;color:#aaa">중복 ${g.dupeCount}건 제거</span>` : ''}
             <span class="xl-count" id="xlCnt-${gi}">${g.tasks.length}건 선택</span>
           </div>
           <div class="xl-table-wrap">
