@@ -425,6 +425,23 @@
     .site-add-row input:focus { outline:none; border-color:#4285f4; }
     .btn-site-add { padding:6px 14px; background:#1a1a2e; color:white; border:none; border-radius:5px; font-family:inherit; font-size:12px; cursor:pointer; }
 
+    /* ── 뷰 전환 ── */
+    .view-toggle { display:flex; gap:0; border:1px solid #e0e0e0; border-radius:6px; overflow:hidden; width:fit-content; margin-bottom:14px; }
+    .view-btn { padding:5px 14px; background:white; border:none; font-family:inherit; font-size:12px; cursor:pointer; color:#666; transition:all 0.15s; }
+    .view-btn.active { background:#1a1a2e; color:white; }
+    .view-btn:hover:not(.active) { background:#f5f5f5; }
+
+    /* ── 프로젝트 타임라인 뷰 ── */
+    .proj-timeline { padding:0 0 0 16px; border-left:2px solid #f0f0f0; margin:0 12px 8px 24px; }
+    .proj-entry { display:flex; gap:8px; align-items:flex-start; padding:7px 0; border-bottom:1px solid #f8f8f8; }
+    .proj-entry:last-child { border-bottom:none; }
+    .proj-entry-date { font-size:10px; color:#bbb; white-space:nowrap; min-width:62px; flex-shrink:0; padding-top:3px; }
+    .proj-entry-body { flex:1; min-width:0; }
+    .proj-entry-progress { font-size:12px; color:#333; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+    .proj-entry-chips { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
+    .entry-del { background:none; border:none; color:#ddd; cursor:pointer; font-size:16px; padding:0 2px; flex-shrink:0; line-height:1; }
+    .entry-del:hover { color:#e53e3e; }
+
     /* 공통 */
     .empty-state { text-align:center; padding:40px; color:#bbb; font-size:13px; }
     .hidden { display:none !important; }
@@ -656,7 +673,12 @@ window.switchTab = id => { activeTab = id; renderTabs(); renderBoard(); };
 
 // ── 보드 렌더 ────────────────────────────────────────────────
 function renderBoard() {
-  $('boardContent').innerHTML = activeTab === 'all' ? renderDashboard() : renderUser(activeTab);
+  if (activeTab === 'all') { $('boardContent').innerHTML = renderDashboard(); return; }
+  $('boardContent').innerHTML = `
+    <div class="view-toggle">
+      <button class="view-btn${viewMode==='project'?' active':''}" onclick="setViewMode('project')">📁 프로젝트별</button>
+      <button class="view-btn${viewMode==='week'?' active':''}" onclick="setViewMode('week')">📅 주차별</button>
+    </div>` + renderUser(activeTab);
 }
 
 // ── 색상 테이블 ──────────────────────────────────────────────
@@ -693,8 +715,40 @@ function weekToNum(wl) {
   return r ? parseInt(r[1])*100 + parseInt(r[2]) : 0;
 }
 
+// weekLabel의 해당 주 금요일 Date 반환
+function weekLabelToFriday(weekLabel) {
+  if (!weekLabel) return null;
+  const m = weekLabel.match(/(\d+)월\s*(\d+)주차/);
+  if (!m) return null;
+  const yr = new Date().getFullYear();
+  const month = parseInt(m[1]) - 1;
+  const weekNum = parseInt(m[2]);
+  const firstDom = new Date(yr, month, 1).getDay();
+  for (let d = 1; d <= 31; d++) {
+    const dt = new Date(yr, month, d);
+    if (dt.getMonth() !== month) break;
+    if (dt.getDay() !== 5) continue;
+    if (Math.ceil((d + firstDom) / 7) === weekNum) return dt;
+  }
+  return new Date(yr, month, Math.min(Math.max(weekNum * 7 - firstDom, 1), 28));
+}
+function toDateStr(dt) {
+  if (!dt) return null;
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
+function taskDate(t) {
+  if (t.date) return new Date(t.date + 'T00:00:00');
+  const fri = weekLabelToFriday(taskWeekLabel(t));
+  if (fri) return fri;
+  return t.updatedAt ? new Date(t.updatedAt) : null;
+}
+function taskDateStr(t) { return toDateStr(taskDate(t)) || ''; }
+function todayStr() { return toDateStr(new Date()); }
+
 // 주차별 아코디언 상태 관리 (렌더 간 유지)
 const collapsedWeeks = new Set();
+let viewMode = 'project'; // 'project' | 'week'
+window.setViewMode = (mode) => { viewMode = mode; renderBoard(); };
 
 // 이전 프로젝트 판별: archived 플래그 또는 주차가 2개월 이상 지남
 function isTaskArchived(t) {
@@ -713,13 +767,21 @@ function renderUser(uid) {
   const u = allUsers[uid];
   if (!u) return '<div class="empty-state">사용자를 찾을 수 없습니다.</div>';
   const isOwn = uid === currentProfile.id;
+
+  const personHead = `
+    <div class="rn-person-head">
+      <span class="rn-dot" style="background:${u.color||'#999'}"></span>
+      <span class="rn-person-name">${esc(u.name)}${u.title?`<span class="rn-title">${esc(u.title)}</span>`:''}</span>
+      <span class="rn-dept">${esc(u.department||'')}</span>
+    </div>`;
+
+  if (viewMode === 'project') return personHead + renderProjectView(uid, isOwn);
+
+  // ── 주차별 뷰 (기존) ──
   const tasks = sortedTasks(uid);
   const thisWeek = currentWeekLabel();
-
   const activeTasks   = tasks.filter(([,t]) => !isTaskArchived(t));
   const archivedTasks = tasks.filter(([,t]) =>  isTaskArchived(t));
-
-  // 활성 업무 주차별 그룹핑
   const byWeek = {};
   activeTasks.forEach(([tid,t]) => {
     const wl = taskWeekLabel(t);
@@ -727,21 +789,13 @@ function renderUser(uid) {
     byWeek[wl].push([tid,t]);
   });
   if (!byWeek[thisWeek]) byWeek[thisWeek] = [];
-
   const weeks = Object.keys(byWeek).sort((a,b) => {
-    if (a === thisWeek) return -1;
-    if (b === thisWeek) return 1;
+    if (a === thisWeek) return -1; if (b === thisWeek) return 1;
     return weekToNum(b) - weekToNum(a);
   });
-
-  return `
-    <div class="rn-person-head">
-      <span class="rn-dot" style="background:${u.color||'#999'}"></span>
-      <span class="rn-person-name">${esc(u.name)}${u.title?`<span class="rn-title">${esc(u.title)}</span>`:''}</span>
-      <span class="rn-dept">${esc(u.department||'')}</span>
-    </div>
-    ${weeks.map(wl => renderWeekSection(uid, wl, byWeek[wl], isOwn, wl===thisWeek)).join('')}
-    ${archivedTasks.length ? renderArchivedSection(uid, archivedTasks, isOwn) : ''}`;
+  return personHead +
+    weeks.map(wl => renderWeekSection(uid, wl, byWeek[wl], isOwn, wl===thisWeek)).join('') +
+    (archivedTasks.length ? renderArchivedSection(uid, archivedTasks, isOwn) : '');
 }
 
 function renderArchivedSection(uid, tasks, isOwn) {
@@ -763,6 +817,124 @@ function renderArchivedSection(uid, tasks, isOwn) {
       <div class="week-body${isOpen?'':' collapsed'}" id="wb-${uid}-archived">
         ${Object.entries(byProj).map(([pn,ptasks]) => renderProjCard(uid,pn,ptasks,isOwn,true)).join('')}
       </div>
+    </div>`;
+}
+
+function renderProjectView(uid, isOwn) {
+  const tasks = sortedTasks(uid);
+  // 프로젝트명으로 그룹핑
+  const projMap = {};
+  for (const [tid, t] of tasks) {
+    const pn = t.projectName || '(제목 없음)';
+    if (!projMap[pn]) projMap[pn] = { name: pn, entries: [], anyActive: false };
+    projMap[pn].entries.push([tid, t]);
+    if (!isTaskArchived(t)) projMap[pn].anyActive = true;
+  }
+  // 각 프로젝트 내 항목을 날짜 내림차순 정렬
+  for (const proj of Object.values(projMap)) {
+    proj.entries.sort((a,b) => {
+      const da = taskDate(a[1]), db = taskDate(b[1]);
+      return (db ? db.getTime() : 0) - (da ? da.getTime() : 0);
+    });
+    const activeEntry = proj.entries.find(([,t]) => !isTaskArchived(t));
+    proj.latestCat = (activeEntry || proj.entries[0])?.[1]?.category || '실행';
+  }
+  const activeProjs = Object.values(projMap).filter(p => p.anyActive)
+    .sort((a,b) => {
+      const ae = a.entries.find(([,t])=>!isTaskArchived(t)), be = b.entries.find(([,t])=>!isTaskArchived(t));
+      const da = ae ? taskDate(ae[1]) : null, db = be ? taskDate(be[1]) : null;
+      return (db ? db.getTime() : 0) - (da ? da.getTime() : 0);
+    });
+  const archivedProjs = Object.values(projMap).filter(p => !p.anyActive);
+  const newProjHtml = isOwn ? `
+    <div class="quick-add-box" id="qa-${uid}-pv">
+      <div class="qa-row">
+        <input class="qa-input" id="qai-${uid}-pv" placeholder="새 프로젝트명 입력 (Enter)..."
+          onkeydown="if(event.key==='Enter')quickAddPV('${uid}')">
+        <button class="qa-submit" onclick="quickAddPV('${uid}')">추가</button>
+        <button class="qa-cancel" onclick="toggleQuickAddPV('${uid}')">취소</button>
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <button class="week-add-btn" onclick="toggleQuickAddPV('${uid}')">+ 새 프로젝트</button>
+    </div>` : '';
+  return newProjHtml +
+    activeProjs.map(proj => renderProjTimelineCard(uid, proj, isOwn, false)).join('') +
+    (archivedProjs.length ? `
+      <div class="week-section archived-section">
+        <div class="week-header" onclick="toggleArchived('${uid}')">
+          <div class="week-dot" style="background:#bbb"></div>
+          <span class="week-label" style="color:#888">이전 프로젝트</span>
+          <span class="week-meta">${archivedProjs.length}건 · 클릭해서 열기</span>
+          <span class="week-chevron${openedArchived.has(uid)?' open':''}">▶</span>
+        </div>
+        <div class="week-body${openedArchived.has(uid)?'':' collapsed'}" id="wb-${uid}-archived">
+          ${archivedProjs.map(proj => renderProjTimelineCard(uid, proj, isOwn, true)).join('')}
+        </div>
+      </div>` : '');
+}
+
+function renderProjTimelineCard(uid, proj, isOwn, archived) {
+  const cat = proj.latestCat;
+  const catBg = CAT_BG[cat]||'#f3f4f6', catFg = CAT_FG[cat]||'#374151';
+  // 마지막 항목(가장 오래된)을 폼 ID로 사용
+  const tid0 = proj.entries[proj.entries.length - 1]?.[0] || proj.entries[0]?.[0] || '';
+  const latestAmt = proj.entries.find(([,t])=>t.amount)?.[1]?.amount;
+  return `
+    <div class="proj-card${archived?' archived-card':''}">
+      <div class="proj-head">
+        <span class="cat-badge" style="background:${catBg};color:${catFg}">${esc(cat)}</span>
+        <span class="proj-name">${esc(proj.name)}</span>
+        ${latestAmt ? `<span style="font-size:11px;color:#888;margin-left:4px">${fmtAmount(latestAmt)}</span>` : ''}
+        ${isOwn ? `<div class="proj-actions">
+          ${archived
+            ? `<button class="btn-unarch-p" onclick="unarchiveProject('${uid}','${tid0}')">복원</button>`
+            : `<button class="btn-arch-p" onclick="archiveProject('${uid}','${tid0}')">이전으로</button>`}
+        </div>` : ''}
+      </div>
+      <div class="proj-timeline">
+        ${proj.entries.map(([tid, t]) => {
+          const ds = taskDateStr(t);
+          const eCat = t.category||'실행';
+          const eBg = CAT_BG[eCat]||'#f3f4f6', eFg = CAT_FG[eCat]||'#374151';
+          return `
+            <div class="proj-entry">
+              <span class="proj-entry-date">${ds}</span>
+              <span class="cat-badge" style="background:${eBg};color:${eFg};font-size:10px;flex-shrink:0">${esc(eCat)}</span>
+              <div class="proj-entry-body">
+                ${t.progress?`<div class="proj-entry-progress">${esc(t.progress)}</div>`:''}
+                <div class="proj-entry-chips">
+                  ${t.drawingStatus&&t.drawingStatus!=='—'?`<span class="chip"><span class="chip-lbl">도면</span>${esc(t.drawingStatus)}</span>`:''}
+                  ${t.amount?`<span class="chip"><span class="chip-lbl">금액</span>${fmtAmount(t.amount)}</span>`:''}
+                  ${t.schedule?`<span class="chip"><span class="chip-lbl">일정</span>${esc(t.schedule)}</span>`:''}
+                  ${t.partner?`<span class="chip"><span class="chip-lbl">협력</span>${esc(t.partner)}</span>`:''}
+                  ${t.notes?`<span class="chip"><span class="chip-lbl">비고</span>${esc(t.notes)}</span>`:''}
+                </div>
+              </div>
+              ${isOwn?`<button class="entry-del" onclick="delTask('${uid}','${tid}')" title="삭제">×</button>`:''}
+            </div>`;
+        }).join('')}
+      </div>
+      ${isOwn && !archived ? `
+        <div class="proj-task-add" id="pta-pv-${uid}-${tid0}">
+          <textarea class="pta-prog" id="pvtp-${uid}-${tid0}" rows="2" placeholder="진행상황 입력..."></textarea>
+          <div class="pta-tags-row">
+            <div class="pta-tag"><span>구분</span>
+              <select id="pvt-cat-${uid}-${tid0}">${CATS.map(c=>`<option${cat===c?' selected':''}>${c}</option>`).join('')}</select></div>
+            <div class="pta-tag"><span>금액</span><input type="number" id="pvt-amt-${uid}-${tid0}" placeholder="0"></div>
+            <div class="pta-tag"><span>일정</span><input id="pvt-sch-${uid}-${tid0}" placeholder=""></div>
+            <div class="pta-tag"><span>협력</span><input id="pvt-par-${uid}-${tid0}" placeholder=""></div>
+            <div class="pta-tag"><span>비고</span><input id="pvt-notes-${uid}-${tid0}" placeholder=""></div>
+          </div>
+          <div class="pta-acts">
+            <button class="qa-submit" onclick="addEntryToProjPV('${uid}','${tid0}')">업무 추가</button>
+            <button class="qa-cancel" onclick="togglePTAPV('${uid}','${tid0}')">취소</button>
+          </div>
+        </div>
+        <div style="padding:6px 14px;border-top:1px solid #f5f5f5">
+          <button style="background:none;border:none;color:#aaa;font-size:11px;cursor:pointer;font-family:inherit"
+            onclick="togglePTAPV('${uid}','${tid0}')">+ 이 프로젝트에 업무 추가</button>
+        </div>` : ''}
     </div>`;
 }
 
@@ -1133,7 +1305,7 @@ window.quickAdd = (uid, weekLabel) => {
   push(ref(db, `tasks/${uid}`), {
     projectName: projName, category: sel?.value||'실행',
     progress:'', drawingStatus:'—', amount:'', schedule:'', partner:'', notes:'', memo:'',
-    weekLabel, order: Date.now(), updatedBy: currentProfile.name, updatedAt: Date.now()
+    weekLabel, date: todayStr(), order: Date.now(), updatedBy: currentProfile.name, updatedAt: Date.now()
   });
   if (inp) inp.value = '';
 };
@@ -1183,6 +1355,69 @@ window.unarchiveTask = (uid, tid) => {
   update(ref(db, `tasks/${uid}/${tid}`), { archived: false, weekLabel: currentWeekLabel(), updatedBy: currentProfile.name, updatedAt: Date.now() });
 };
 
+// 프로젝트 뷰: 프로젝트 전체 이전으로/복원
+window.archiveProject = (uid, tid0) => {
+  const projName = allTasks[uid]?.[tid0]?.projectName;
+  if (!projName) return;
+  const upd = {};
+  Object.entries(allTasks[uid]||{}).forEach(([tid,t]) => {
+    if (t.projectName === projName) { upd[`tasks/${uid}/${tid}/archived`] = true; upd[`tasks/${uid}/${tid}/updatedAt`] = Date.now(); }
+  });
+  if (Object.keys(upd).length) update(ref(db), upd);
+};
+window.unarchiveProject = (uid, tid0) => {
+  const projName = allTasks[uid]?.[tid0]?.projectName;
+  if (!projName) return;
+  const upd = {};
+  Object.entries(allTasks[uid]||{}).forEach(([tid,t]) => {
+    if (t.projectName === projName) { upd[`tasks/${uid}/${tid}/archived`] = false; upd[`tasks/${uid}/${tid}/updatedAt`] = Date.now(); }
+  });
+  if (Object.keys(upd).length) update(ref(db), upd);
+};
+
+// 프로젝트 뷰: 새 프로젝트 빠른 추가
+window.quickAddPV = (uid) => {
+  const inp = document.getElementById(`qai-${uid}-pv`);
+  const projName = inp?.value.trim();
+  if (!projName) { inp?.focus(); return; }
+  push(ref(db, `tasks/${uid}`), {
+    projectName: projName, category: '실행',
+    weekLabel: currentWeekLabel(), date: todayStr(),
+    progress:'', drawingStatus:'—', amount:'', schedule:'', partner:'', notes:'', memo:'',
+    order: Date.now(), updatedBy: currentProfile.name, updatedAt: Date.now()
+  });
+  if (inp) inp.value = '';
+};
+window.toggleQuickAddPV = (uid) => {
+  const box = document.getElementById(`qa-${uid}-pv`);
+  if (!box) return;
+  const isOpen = box.classList.toggle('open');
+  if (isOpen) document.getElementById(`qai-${uid}-pv`)?.focus();
+};
+
+// 프로젝트 뷰: 기존 프로젝트에 업무 항목 추가
+window.addEntryToProjPV = (uid, tid0) => {
+  const base = allTasks[uid]?.[tid0];
+  if (!base) return;
+  const g = s => document.getElementById(`pvt-${s}-${uid}-${tid0}`)?.value ?? '';
+  const prog = document.getElementById(`pvtp-${uid}-${tid0}`)?.value.trim();
+  const amt = g('amt');
+  push(ref(db, `tasks/${uid}`), {
+    projectName: base.projectName,
+    weekLabel: currentWeekLabel(), date: todayStr(),
+    category: g('cat') || base.category || '실행',
+    drawingStatus: '—', progress: prog||'',
+    amount: amt===''?'':Number(amt)||0,
+    schedule: g('sch'), partner: g('par'), notes: g('notes'), memo:'',
+    order: Date.now(), updatedBy: currentProfile.name, updatedAt: Date.now()
+  });
+  const pta = document.getElementById(`pta-pv-${uid}-${tid0}`);
+  if (pta) { pta.querySelectorAll('input,textarea').forEach(el=>el.value=''); pta.classList.remove('open'); }
+};
+window.togglePTAPV = (uid, tid0) => {
+  document.getElementById(`pta-pv-${uid}-${tid0}`)?.classList.toggle('open');
+};
+
 // 카드 내 업무 추가 폼 토글
 window.togglePTA = (uid, tid0) => {
   document.getElementById(`pta-${uid}-${tid0}`)?.classList.toggle('open');
@@ -1205,7 +1440,7 @@ window.addTaskToProj = (uid, tid0) => {
     schedule:      g('sch'),
     partner:       g('par'),
     notes:         g('notes'),
-    memo: '',
+    memo: '', date: todayStr(),
     order: Date.now(), updatedBy: currentProfile.name, updatedAt: Date.now()
   });
   // 입력값 초기화
@@ -1480,6 +1715,7 @@ function parseExcel(rows) {
     const task = {
       projectName:   projVal,
       weekLabel:     weekLabelVal,
+      date:          toDateStr(weekLabelToFriday(weekLabelVal)),
       category:      mapCat(String(row[cols.category] || '')),
       drawingStatus: mapDraw(String(row[cols.drawing]  || '')),
       progress:      String(row[cols.progress] || '').trim(),
@@ -1493,21 +1729,20 @@ function parseExcel(rows) {
     result[personVal].push(task);
   }
 
-  // ── 중복 제거: 같은 담당자 내 동일 프로젝트명 → 최신 주차만 유지 ──
-  // 엑셀이 매 주차 복사 방식이므로 이전 주차 동일 항목은 최신으로 덮어씀
+  // ── 완전히 동일한 행만 제거 (모든 필드가 같은 경우만) ──
   let totalDupes = 0;
   const parsed = Object.entries(result).map(([name, tasks]) => {
-    const deduped = {}; // key: 프로젝트명(소문자) → task
+    const seen = new Set();
+    const unique = [];
     for (const task of tasks) {
-      const key = task.projectName.trim().toLowerCase();
-      if (!deduped[key] || weekOrder(task.weekLabel) >= weekOrder(deduped[key].weekLabel)) {
-        deduped[key] = task;
-      }
+      const fp = [task.projectName, task.weekLabel, task.category, task.drawingStatus,
+                  task.progress, String(task.amount||''), task.schedule, task.partner, task.notes].join('\x00');
+      if (seen.has(fp)) { totalDupes++; continue; }
+      seen.add(fp);
+      unique.push(task);
     }
-    const dedupedTasks = Object.values(deduped);
-    const dupeCount = tasks.length - dedupedTasks.length;
-    totalDupes += dupeCount;
-    return { name, tasks: dedupedTasks, original: tasks.length, dupeCount };
+    const dupeCount = tasks.length - unique.length;
+    return { name, tasks: unique, original: tasks.length, dupeCount };
   });
 
   const debug = { totalRows: rows.length, dataRows, headerFound, totalDupes,
@@ -1653,7 +1888,8 @@ window.confirmImport = async () => {
       const newRef = push(ref(db, `tasks/${uid}`));
       updates[`tasks/${uid}/${newRef.key}`] = {
         ...t, memo: '',
-        weekLabel: t.weekLabel || currentWeekLabel(),  // Excel의 주차 정보 보존
+        weekLabel: t.weekLabel || currentWeekLabel(),
+        date: t.date || null,
         order: Date.now() + count,
         updatedBy: currentProfile.name,
         updatedAt: Date.now()
