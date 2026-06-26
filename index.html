@@ -195,6 +195,59 @@
     /* 공통 */
     .empty-state { text-align: center; padding: 40px; color: #bbb; font-size: 13px; }
     .hidden { display: none !important; }
+
+    /* ── Excel 가져오기 모달 ── */
+    .xl-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: center; z-index: 300;
+    }
+    .xl-modal {
+      background: white; border-radius: 12px;
+      width: min(920px, 95vw); max-height: 88vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .xl-head {
+      padding: 18px 24px; border-bottom: 1px solid #f0f0f0;
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+    }
+    .xl-head h3 { font-size: 15px; font-weight: 700; }
+    .xl-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #aaa; line-height: 1; }
+    .xl-close:hover { color: #333; }
+    .xl-body { flex: 1; overflow-y: auto; padding: 18px 24px; }
+    .xl-info { margin-bottom: 14px; color: #555; font-size: 13px; padding: 10px 14px; background: #f0f4ff; border-radius: 6px; }
+    .xl-group { margin-bottom: 16px; border: 1px solid #e8e8e8; border-radius: 8px; overflow: hidden; }
+    .xl-group-head {
+      background: #f8f9fa; padding: 10px 14px;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      border-bottom: 1px solid #e8e8e8;
+    }
+    .xl-person { font-size: 13px; font-weight: 600; min-width: 70px; }
+    .xl-sel {
+      padding: 5px 10px; border: 1px solid #ddd; border-radius: 5px;
+      font-family: inherit; font-size: 12px; background: white; cursor: pointer; flex: 1; max-width: 180px;
+    }
+    .xl-sel.matched { border-color: #34a853; }
+    .xl-sel.unmatched { border-color: #e53e3e; }
+    .xl-count { font-size: 11px; color: #888; margin-left: auto; }
+    .xl-task { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid #f5f5f5; font-size: 12px; }
+    .xl-task:last-child { border-bottom: none; }
+    .xl-task-cat {
+      flex-shrink: 0; padding: 1px 8px; border-radius: 10px;
+      font-size: 10px; font-weight: 600;
+    }
+    .xl-task-name { flex: 0 0 200px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .xl-task-prog { flex: 1; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .xl-task-amt { flex-shrink: 0; color: #888; font-size: 11px; white-space: nowrap; }
+    .xl-foot {
+      padding: 14px 24px; border-top: 1px solid #f0f0f0;
+      display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0;
+    }
+    .xl-btn { padding: 9px 20px; border: none; border-radius: 6px; font-family: inherit; font-size: 13px; cursor: pointer; }
+    .xl-btn-cancel { background: #f5f5f5; }
+    .xl-btn-ok { background: #1a1a2e; color: white; }
+    .xl-btn-ok:hover { background: #2d3561; }
+    .xl-empty { padding: 32px; text-align: center; color: #bbb; }
   </style>
 </head>
 <body>
@@ -240,6 +293,7 @@
         <span class="badge-dot" id="hDot"></span>
         <span id="hName"></span>
       </div>
+      <button class="btn-header" onclick="triggerImport()">Excel 가져오기</button>
       <a href="admin.html" class="btn-header">관리자</a>
       <button class="btn-header" onclick="doSignOut()">로그아웃</button>
     </div>
@@ -248,6 +302,27 @@
   <div id="tabs"></div>
   <div id="board"><div id="boardContent"></div></div>
 </div>
+
+<!-- 파일 입력 (hidden) -->
+<input type="file" id="excelInput" accept=".xlsx,.xls" style="display:none">
+
+<!-- Excel 가져오기 모달 -->
+<div id="xlOverlay" class="xl-overlay hidden">
+  <div class="xl-modal">
+    <div class="xl-head">
+      <h3>Excel 가져오기</h3>
+      <button class="xl-close" onclick="closeImport()">×</button>
+    </div>
+    <div class="xl-body" id="xlBody"></div>
+    <div class="xl-foot">
+      <button class="xl-btn xl-btn-cancel" onclick="closeImport()">취소</button>
+      <button class="xl-btn xl-btn-ok" onclick="confirmImport()">가져오기</button>
+    </div>
+  </div>
+</div>
+
+<!-- SheetJS (Excel 파싱) -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js"></script>
 
 <script type="module">
 import { initializeApp }            from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -530,6 +605,208 @@ function sortedTasks(uid) {
 function esc(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ── Excel 가져오기 ────────────────────────────────────────────
+let xlParsed = []; // [{ name, tasks[] }]
+
+window.triggerImport = () => $('excelInput').click();
+window.closeImport  = () => { $('xlOverlay').classList.add('hidden'); xlParsed = []; };
+
+$('excelInput').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+  show('loadingScreen');
+  try {
+    const buf = await file.arrayBuffer();
+    const wb  = XLSX.read(buf);
+    const ws  = wb.Sheets[wb.SheetNames[0]];
+    // 2D 배열로 변환 후 병합셀 전파
+    const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+    expandMerges(ws, rows);
+    xlParsed = parseExcel(rows);
+    renderImport();
+  } catch(err) {
+    alert('파일 읽기 실패: ' + err.message);
+  }
+  hide('loadingScreen');
+});
+
+// 병합셀 값 전파
+function expandMerges(ws, rows) {
+  (ws['!merges'] || []).forEach(m => {
+    const val = rows[m.s.r]?.[m.s.c];
+    for (let r = m.s.r; r <= m.e.r; r++)
+      for (let c = m.s.c; c <= m.e.c; c++)
+        if (rows[r] && !(r === m.s.r && c === m.s.c)) rows[r][c] = val;
+  });
+}
+
+// 컬럼 헤더 감지
+function detectCols(row) {
+  const m = {};
+  row.forEach((c, i) => {
+    const s = String(c).trim();
+    if (s.includes('담당자'))                       m.person    = i;
+    else if (s.includes('진행구분'))                m.category  = i;
+    else if (s.includes('도면'))                    m.drawing   = i;
+    else if (s.includes('프로젝트명') || s === '건명') m.project  = i;
+    else if (s.includes('진행상황') || s.includes('진행 상황')) m.progress = i;
+    else if (s === '금액' || s.includes('금액'))    m.amount    = i;
+    else if (s.includes('실행일정') || s.includes('일정')) m.schedule = i;
+    else if (s.includes('인테리어') || s.includes('협력')) m.partner  = i;
+    else if (s === '비고')                          m.notes     = i;
+  });
+  return m;
+}
+
+// 카테고리 / 도면상태 정규화
+const VALID_CATS  = ['실행','제안','신규','도면','제작','테스트','개발','기술지원','기타'];
+const VALID_DRAWS = ['작성필요','작성중','검토중','완료'];
+const mapCat  = s => VALID_CATS.includes(s.trim())  ? s.trim() : '기타';
+const mapDraw = s => { const t=s.trim(); return VALID_DRAWS.includes(t) ? t : '—'; };
+
+// 금액 파싱 (억/천/만/숫자)
+function parseAmt(s) {
+  if (!s) return '';
+  s = String(s).trim().replace(/,/g,'').replace(/원/g,'');
+  const 억 = s.match(/([\d.]+)\s*억/);
+  const 만 = s.match(/([\d.]+)\s*만/);
+  const 천 = s.match(/([\d.]+)\s*천/);
+  if (억) return Math.round(parseFloat(억[1]) * 1e8);
+  if (만) return Math.round(parseFloat(만[1]) * 1e4);
+  if (천) return Math.round(parseFloat(천[1]) * 1e3);
+  const n = parseFloat(s);
+  return isNaN(n) ? '' : Math.round(n);
+}
+
+// Excel 전체 파싱
+function parseExcel(rows) {
+  const result = {}; // { personName: tasks[] }
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    // 헤더 행 감지: '프로젝트명' 포함
+    if (!row.some(c => String(c).includes('프로젝트명') || c === '건명')) continue;
+    const cols = detectCols(row);
+    if (cols.project == null) continue;
+
+    // 헤더 다음 행부터 데이터 파싱
+    i++;
+    let lastPerson = '';
+    while (i < rows.length) {
+      const dr = rows[i];
+      // 다음 헤더 or 주차 타이틀 만나면 중단
+      if (dr.some(c => String(c).includes('프로젝트명') || String(c).includes('주차'))) { i--; break; }
+
+      const person  = String(dr[cols.person]  || '').trim();
+      const project = String(dr[cols.project] || '').trim();
+      if (person) lastPerson = person;
+      if (!project || !lastPerson) { i++; continue; }
+
+      const task = {
+        projectName:   project,
+        category:      mapCat(String(dr[cols.category] || '')),
+        drawingStatus: mapDraw(String(dr[cols.drawing] || '')),
+        progress:      String(dr[cols.progress] || '').trim(),
+        amount:        parseAmt(dr[cols.amount]),
+        schedule:      String(dr[cols.schedule] || '').trim(),
+        partner:       String(dr[cols.partner]  || '').trim(),
+        notes:         String(dr[cols.notes]    || '').trim(),
+      };
+
+      if (!result[lastPerson]) result[lastPerson] = [];
+      // 중복 방지: 같은 프로젝트명이 이미 있으면 스킵
+      if (!result[lastPerson].some(t => t.projectName === task.projectName)) {
+        result[lastPerson].push(task);
+      }
+      i++;
+    }
+  }
+
+  return Object.entries(result).map(([name, tasks]) => ({ name, tasks }));
+}
+
+// 미리보기 렌더
+function renderImport() {
+  if (!xlParsed.length) { alert('인식된 업무 데이터가 없습니다.'); return; }
+
+  const totalTasks = xlParsed.reduce((s, g) => s + g.tasks.length, 0);
+  const userOpts = Object.entries(allUsers)
+    .sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''))
+    .map(([id,u]) => `<option value="${id}">${esc(u.name)}</option>`).join('');
+
+  $('xlBody').innerHTML = `
+    <div class="xl-info">
+      총 <strong>${xlParsed.length}명</strong>, <strong>${totalTasks}건</strong> 인식됨.
+      담당자 이름이 자동 매칭됩니다. 매칭이 안 된 경우 직접 선택해 주세요.
+    </div>
+    ${xlParsed.map((g, gi) => {
+      const autoId = Object.entries(allUsers).find(([,u]) => u.name === g.name)?.[0] || '';
+      return `
+        <div class="xl-group">
+          <div class="xl-group-head">
+            <span class="xl-person">${esc(g.name)}</span>
+            <select class="xl-sel ${autoId?'matched':'unmatched'}" id="xlSel-${gi}">
+              <option value="">-- 사용자 선택 --</option>
+              ${userOpts}
+            </select>
+            <span class="xl-count">${g.tasks.length}건</span>
+          </div>
+          <div>
+            ${g.tasks.map(t => {
+              const bg = CAT_BG[t.category]||'#f3f4f6', fg = CAT_FG[t.category]||'#374151';
+              const amtStr = t.amount ? Number(t.amount).toLocaleString('ko-KR')+'원' : '';
+              return `<div class="xl-task">
+                <span class="xl-task-cat" style="background:${bg};color:${fg}">${esc(t.category)}</span>
+                <span class="xl-task-name" title="${esc(t.projectName)}">${esc(t.projectName)}</span>
+                <span class="xl-task-prog" title="${esc(t.progress)}">${esc(t.progress.substring(0,40))}${t.progress.length>40?'…':''}</span>
+                ${amtStr ? `<span class="xl-task-amt">${amtStr}</span>` : ''}
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+    }).join('')}`;
+
+  // 자동 매칭 값 설정
+  xlParsed.forEach((g, gi) => {
+    const autoId = Object.entries(allUsers).find(([,u]) => u.name === g.name)?.[0];
+    if (autoId) $(`xlSel-${gi}`).value = autoId;
+  });
+
+  show('xlOverlay');
+}
+
+// 가져오기 실행
+window.confirmImport = async () => {
+  const updates = {};
+  let count = 0;
+
+  xlParsed.forEach((g, gi) => {
+    const uid = $(`xlSel-${gi}`)?.value;
+    if (!uid) return;
+    g.tasks.forEach((t, ti) => {
+      const newRef = push(ref(db, `tasks/${uid}`));
+      updates[`tasks/${uid}/${newRef.key}`] = {
+        ...t, memo: '',
+        order: Date.now() + ti,
+        updatedBy: currentProfile.name,
+        updatedAt: Date.now()
+      };
+      count++;
+    });
+  });
+
+  if (!count) { alert('사용자가 선택되지 않은 항목이 있습니다.'); return; }
+
+  try {
+    await update(ref(db), updates);
+    closeImport();
+    alert(`${count}개 업무가 추가되었습니다.`);
+  } catch(err) {
+    alert('저장 실패: ' + err.message);
+  }
+};
 </script>
 </body>
 </html>
