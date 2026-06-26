@@ -363,6 +363,53 @@
     .dash-task-name { font-size:12px; color:#333; flex:1; }
     .dash-task-prog { font-size:11px; color:#aaa; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; }
 
+    /* ── 카드 내 업무 추가 폼 ── */
+    .proj-task-add { border-top:1px dashed #d1fae5; background:#f8fff9; padding:12px 14px; display:none; }
+    .proj-task-add.open { display:block; }
+    .pta-prog { width:100%; padding:7px 9px; border:1px solid #d1fae5; border-radius:6px; font-family:inherit; font-size:12px; resize:none; min-height:48px; margin-bottom:8px; }
+    .pta-prog:focus { outline:none; border-color:#34a853; }
+    .pta-tags-row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+    .pta-tag { display:flex; align-items:center; gap:4px; background:white; border:1px solid #e0e0e0; border-radius:5px; padding:4px 8px; }
+    .pta-tag span { font-size:10px; color:#aaa; white-space:nowrap; }
+    .pta-tag input, .pta-tag select { border:none; font-family:inherit; font-size:12px; background:transparent; width:70px; padding:0; }
+    .pta-tag input[type="number"] { width:80px; }
+    .pta-tag input:focus, .pta-tag select:focus { outline:none; }
+    .pta-acts { display:flex; gap:6px; }
+
+    /* ── 이전 프로젝트 섹션 ── */
+    .archived-section .week-header { border-style:dashed; opacity:0.75; }
+    .archived-card { opacity:0.75; }
+    .btn-arch-p {
+      padding:3px 9px; background:none; border:1px solid #e2e8f0;
+      border-radius:4px; font-family:inherit; font-size:10px; cursor:pointer; color:#94a3b8;
+    }
+    .btn-arch-p:hover { background:#f8fafc; color:#64748b; }
+    .btn-unarch-p {
+      padding:3px 9px; background:#f0fff4; border:1px solid #86efac;
+      border-radius:4px; font-family:inherit; font-size:10px; cursor:pointer; color:#22c55e;
+    }
+
+    /* ── 대시보드 개선 ── */
+    .stat-grid-7 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:10px; }
+    .stat-grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:22px; }
+    .stat-card-sm { background:white; border-radius:10px; padding:14px 16px; border:1px solid #e8e8e8; box-shadow:0 1px 4px rgba(0,0,0,0.04); }
+    .stat-label-sm { font-size:10px; color:#aaa; font-weight:600; margin-bottom:3px; letter-spacing:0.3px; }
+    .stat-value-sm { font-size:22px; font-weight:700; color:#1a1a2e; }
+    .stat-sub-sm { font-size:10px; color:#bbb; margin-top:1px; }
+
+    /* 사업장 관리 */
+    .site-admin-wrap { background:white; border-radius:10px; border:1px solid #e8e8e8; padding:18px 20px; margin-bottom:22px; }
+    .site-admin-title { font-size:12px; font-weight:700; color:#666; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+    .site-list { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
+    .site-row { display:flex; align-items:center; gap:8px; padding:6px 10px; background:#f8f9fa; border-radius:6px; font-size:12px; }
+    .site-name { font-weight:600; color:#333; min-width:80px; }
+    .site-kws { color:#888; flex:1; }
+    .site-del { padding:2px 8px; background:none; border:1px solid #fecaca; border-radius:3px; color:#e53e3e; cursor:pointer; font-size:10px; font-family:inherit; }
+    .site-add-row { display:flex; gap:6px; flex-wrap:wrap; }
+    .site-add-row input { padding:6px 9px; border:1px solid #ddd; border-radius:5px; font-family:inherit; font-size:12px; }
+    .site-add-row input:focus { outline:none; border-color:#4285f4; }
+    .btn-site-add { padding:6px 14px; background:#1a1a2e; color:white; border:none; border-radius:5px; font-family:inherit; font-size:12px; cursor:pointer; }
+
     /* 공통 */
     .empty-state { text-align:center; padding:40px; color:#bbb; font-size:13px; }
     .hidden { display:none !important; }
@@ -526,7 +573,9 @@ const db   = getDatabase(app);
 let currentProfile = null;
 let allUsers = {};
 let allTasks = {};
+let allSites = {};
 let activeTab = null;
+const openedArchived = new Set(); // 이전 프로젝트 섹션 열린 uid
 
 // ── 화면 전환 ────────────────────────────────────────────────
 const $    = id => document.getElementById(id);
@@ -564,6 +613,7 @@ onAuthStateChanged(auth, handleUser);
 function startListeners() {
   onValue(ref(db, 'users'), snap => { allUsers = snap.val() || {}; renderTabs(); renderBoard(); });
   onValue(ref(db, 'tasks'), snap => { allTasks = snap.val() || {}; renderBoard(); });
+  onValue(ref(db, 'sites'), snap => { allSites = snap.val() || {}; if(activeTab==='all') renderBoard(); });
 }
 
 // ── 탭 ──────────────────────────────────────────────────────
@@ -620,6 +670,18 @@ function weekToNum(wl) {
 // 주차별 아코디언 상태 관리 (렌더 간 유지)
 const collapsedWeeks = new Set();
 
+// 이전 프로젝트 판별: archived 플래그 또는 주차가 2개월 이상 지남
+function isTaskArchived(t) {
+  if (t.archived) return true;
+  const wl = taskWeekLabel(t);
+  const r = wl.match(/(\d+)월\s*(\d+)주차/);
+  if (!r) return false;
+  const taskDayOfYear = (parseInt(r[1])-1)*30 + (parseInt(r[2])-1)*7 + 3;
+  const now = new Date();
+  const curDayOfYear = now.getMonth()*30 + now.getDate();
+  return (curDayOfYear - taskDayOfYear) > 60;
+}
+
 // ── 단일 유저 뷰 (릴리즈 노트 스타일) ───────────────────────
 function renderUser(uid) {
   const u = allUsers[uid];
@@ -628,12 +690,15 @@ function renderUser(uid) {
   const tasks = sortedTasks(uid);
   const thisWeek = currentWeekLabel();
 
-  // 주차별 그룹핑
+  const activeTasks   = tasks.filter(([,t]) => !isTaskArchived(t));
+  const archivedTasks = tasks.filter(([,t]) =>  isTaskArchived(t));
+
+  // 활성 업무 주차별 그룹핑
   const byWeek = {};
-  tasks.forEach(([tid, t]) => {
+  activeTasks.forEach(([tid,t]) => {
     const wl = taskWeekLabel(t);
     if (!byWeek[wl]) byWeek[wl] = [];
-    byWeek[wl].push([tid, t]);
+    byWeek[wl].push([tid,t]);
   });
   if (!byWeek[thisWeek]) byWeek[thisWeek] = [];
 
@@ -649,65 +714,86 @@ function renderUser(uid) {
       <span class="rn-person-name">${esc(u.name)}${u.title?`<span class="rn-title">${esc(u.title)}</span>`:''}</span>
       <span class="rn-dept">${esc(u.department||'')}</span>
     </div>
-    ${weeks.map(wl => renderWeekSection(uid, wl, byWeek[wl], isOwn, wl===thisWeek)).join('')}`;
+    ${weeks.map(wl => renderWeekSection(uid, wl, byWeek[wl], isOwn, wl===thisWeek)).join('')}
+    ${archivedTasks.length ? renderArchivedSection(uid, archivedTasks, isOwn) : ''}`;
+}
+
+function renderArchivedSection(uid, tasks, isOwn) {
+  const isOpen = openedArchived.has(uid);
+  const byProj = {};
+  tasks.forEach(([tid,t]) => {
+    const pn = t.projectName || '(제목 없음)';
+    if (!byProj[pn]) byProj[pn] = [];
+    byProj[pn].push([tid,t]);
+  });
+  return `
+    <div class="week-section archived-section">
+      <div class="week-header" onclick="toggleArchived('${uid}')">
+        <div class="week-dot" style="background:#bbb"></div>
+        <span class="week-label" style="color:#888">이전 프로젝트</span>
+        <span class="week-meta">${tasks.length}건 · 60일 이상 또는 수동 이동</span>
+        <span class="week-chevron${isOpen?' open':''}">▶</span>
+      </div>
+      <div class="week-body${isOpen?'':' collapsed'}" id="wb-${uid}-archived">
+        ${Object.entries(byProj).map(([pn,ptasks]) => renderProjCard(uid,pn,ptasks,isOwn,true)).join('')}
+      </div>
+    </div>`;
 }
 
 function renderWeekSection(uid, weekLabel, weekTasks, isOwn, isCurrentWeek) {
   const wKey = weekLabel.replace(/\s/g,'_');
   const isCollapsed = collapsedWeeks.has(`${uid}|${weekLabel}`);
-
-  // 프로젝트명으로 그룹핑
   const byProj = {};
   weekTasks.forEach(([tid,t]) => {
     const pn = t.projectName || '(제목 없음)';
     if (!byProj[pn]) byProj[pn] = [];
     byProj[pn].push([tid,t]);
   });
-
   return `
     <div class="week-section">
       <div class="week-header" onclick="toggleWeek('${uid}','${weekLabel}')">
         <div class="week-dot${isCurrentWeek?' current':''}"></div>
         <span class="week-label">${esc(weekLabel)}${isCurrentWeek?'<span class="cur-badge">이번 주</span>':''}</span>
         <span class="week-meta">${weekTasks.length}건</span>
-        ${isOwn&&isCurrentWeek ? `<button class="week-add-btn" onclick="event.stopPropagation();toggleQuickAdd('${uid}','${wKey}')">+ 업무 추가</button>` : ''}
+        ${isOwn ? `<button class="week-add-btn" onclick="event.stopPropagation();toggleQuickAdd('${uid}','${wKey}')">+ 프로젝트 추가</button>` : ''}
         <span class="week-chevron${isCollapsed?'':' open'}">▶</span>
       </div>
       <div class="week-body${isCollapsed?' collapsed':''}" id="wb-${uid}-${wKey}">
-        <div class="quick-add-box${isCurrentWeek&&isOwn?' ':'hidden'}" id="qa-${uid}-${wKey}">
+        <div class="quick-add-box" id="qa-${uid}-${wKey}">
           <div class="qa-row">
-            <input class="qa-input" id="qai-${uid}-${wKey}" placeholder="프로젝트명 입력..."
+            <input class="qa-input" id="qai-${uid}-${wKey}" placeholder="새 프로젝트명 입력 (Enter로 빠른 추가)..."
               onkeydown="if(event.key==='Enter')quickAdd('${uid}','${weekLabel}')">
-            <select class="qa-select" id="qas-${uid}-${wKey}">
-              ${CATS.map(c=>`<option>${c}</option>`).join('')}
-            </select>
             <button class="qa-submit" onclick="quickAdd('${uid}','${weekLabel}')">추가</button>
             <button class="qa-cancel" onclick="toggleQuickAdd('${uid}','${wKey}')">취소</button>
           </div>
         </div>
-        ${!weekTasks.length ? `<div class="empty-state" style="padding:18px;font-size:12px">업무 항목이 없습니다.<br>${isOwn?'위 + 버튼으로 추가하세요.':''}</div>` : ''}
-        ${Object.entries(byProj).map(([pn,ptasks]) => renderProjCard(uid, pn, ptasks, isOwn)).join('')}
+        ${!weekTasks.length ? `<div class="empty-state" style="padding:18px;font-size:12px">업무 항목이 없습니다.${isOwn?'<br>+ 프로젝트 추가로 시작하세요.':''}</div>` : ''}
+        ${Object.entries(byProj).map(([pn,ptasks]) => renderProjCard(uid,pn,ptasks,isOwn,false)).join('')}
       </div>
     </div>`;
 }
 
-function renderProjCard(uid, projName, tasks, isOwn) {
-  const isMulti = tasks.length > 1;
+// archived: 이전 프로젝트 섹션에서 렌더할 때 true
+function renderProjCard(uid, projName, tasks, isOwn, archived) {
   const [[tid0, t0]] = tasks;
+  // 카드 상단: 진행구분 배지는 한 번만 (중복 제거)
+  // 복수 업무가 있을 경우 각 body에 구분 표시 없이 진행상황+칩만 표시
   return `
-    <div class="proj-card">
+    <div class="proj-card${archived?' archived-card':''}">
       <div class="proj-head">
         <span class="cat-badge" style="background:${CAT_BG[t0.category]||'#f3f4f6'};color:${CAT_FG[t0.category]||'#374151'}">${esc(t0.category||'실행')}</span>
         <span class="proj-name">${esc(projName)}</span>
         ${isOwn ? `<div class="proj-actions">
-          <button class="btn-memo-p${t0.memo?' has-memo':''}" onclick="toggleMemoP('${uid}','${tid0}')">💬</button>
+          ${archived
+            ? `<button class="btn-unarch-p" onclick="unarchiveTask('${uid}','${tid0}')">복원</button>`
+            : `<button class="btn-arch-p"   onclick="archiveTask('${uid}','${tid0}')">이전으로</button>`}
           <button class="btn-edit-p" onclick="toggleEditP('${uid}','${tid0}')">편집</button>
-          <button class="btn-del-p" onclick="delTask('${uid}','${tid0}')">삭제</button>
+          <button class="btn-del-p"  onclick="delTask('${uid}','${tid0}')">삭제</button>
         </div>` : ''}
       </div>
+
       ${tasks.map(([tid,t]) => `
         <div class="proj-body">
-          ${isMulti ? `<div style="margin-bottom:4px"><span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};font-size:10px">${esc(t.category)}</span></div>` : ''}
           ${t.progress ? `<div class="proj-progress">${esc(t.progress)}</div>` : ''}
           <div class="chips-row">
             ${t.drawingStatus&&t.drawingStatus!=='—'?`<span class="chip"><span class="chip-lbl">도면</span>${esc(t.drawingStatus)}</span>`:''}
@@ -715,12 +801,12 @@ function renderProjCard(uid, projName, tasks, isOwn) {
             ${t.schedule?`<span class="chip"><span class="chip-lbl">일정</span>${esc(t.schedule)}</span>`:''}
             ${t.partner?`<span class="chip"><span class="chip-lbl">협력</span>${esc(t.partner)}</span>`:''}
             ${t.notes?`<span class="chip"><span class="chip-lbl">비고</span>${esc(t.notes)}</span>`:''}
-            <span class="chip" style="background:#f0f4ff;color:#888"><span class="chip-lbl">수정</span>${esc(t.updatedBy||'')} ${fmtTs(t.updatedAt)}</span>
+            <span class="chip" style="background:#f0f4ff;color:#aaa;font-size:10px">${esc(t.updatedBy||'')} ${fmtTs(t.updatedAt)}</span>
           </div>
         </div>
         ${isOwn ? `
         <div class="proj-memo" id="pm-${uid}-${tid}">
-          <div class="memo-lines" id="ml-${uid}-${tid}">
+          <div class="memo-lines">
             ${(t.memo||'').trim().split('\n').filter(Boolean).map(l=>`<div class="memo-line">${esc(l)}</div>`).join('') || '<span style="color:#ccc;font-size:11px">메모 없음</span>'}
           </div>
           <div class="memo-add-row">
@@ -754,78 +840,150 @@ function renderProjCard(uid, projName, tasks, isOwn) {
           </div>
         </div>` : ''}
       `).join('')}
+
+      ${isOwn&&!archived ? `
+        <div class="proj-task-add" id="pta-${uid}-${tid0}">
+          <textarea class="pta-prog" id="ptap-${uid}-${tid0}" rows="2" placeholder="진행상황 입력..."></textarea>
+          <div class="pta-tags-row">
+            <div class="pta-tag">
+              <span>구분</span>
+              <select id="ptat-cat-${uid}-${tid0}">${CATS.map(c=>`<option>${c}</option>`).join('')}</select>
+            </div>
+            <div class="pta-tag"><span>금액</span><input type="number" id="ptat-amt-${uid}-${tid0}" placeholder="0"></div>
+            <div class="pta-tag"><span>일정</span><input id="ptat-sch-${uid}-${tid0}" placeholder=""></div>
+            <div class="pta-tag"><span>협력</span><input id="ptat-par-${uid}-${tid0}" placeholder=""></div>
+            <div class="pta-tag"><span>비고</span><input id="ptat-notes-${uid}-${tid0}" placeholder=""></div>
+          </div>
+          <div class="pta-acts">
+            <button class="qa-submit" onclick="addTaskToProj('${uid}','${tid0}')">업무 추가</button>
+            <button class="qa-cancel" onclick="togglePTA('${uid}','${tid0}')">취소</button>
+          </div>
+        </div>
+        <div style="padding:6px 14px;border-top:1px solid #f5f5f5">
+          <button style="background:none;border:none;color:#aaa;font-size:11px;cursor:pointer;font-family:inherit"
+            onclick="togglePTA('${uid}','${tid0}')">+ 이 프로젝트에 업무 추가</button>
+          ${t0.memo!==undefined?`<button class="btn-memo-p${t0.memo?' has-memo':''}" style="float:right;margin-right:4px" onclick="toggleMemoP('${uid}','${tid0}')">💬 메모</button>`:''}
+        </div>` : ''}
     </div>`;
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────
+function matchSite(projName) {
+  for (const [sid, s] of Object.entries(allSites)) {
+    for (const kw of (s.keywords||'').split(',').map(k=>k.trim()).filter(Boolean)) {
+      if (projName.includes(kw)) return { sid, name: s.name };
+    }
+  }
+  return null;
+}
+
 function renderDashboard() {
   const thisWeek = currentWeekLabel();
   const users = Object.entries(allUsers).sort((a,b)=>(a[1].name||'').localeCompare(b[1].name||''));
   if (!users.length) return '<div class="empty-state">등록된 사용자가 없습니다.</div>';
 
-  // 이번 주 업무만 집계
-  let totalAll=0, totalDone=0, totalProp=0;
-  const catCount = {};
-  const personData = users.map(([uid,u]) => {
-    const tasks = sortedTasks(uid).filter(([,t]) => taskWeekLabel(t) === thisWeek);
-    totalAll += tasks.length;
-    tasks.forEach(([,t]) => {
-      if (t.category==='완료') totalDone++;
-      if (t.category==='제안') totalProp++;
-      catCount[t.category||'기타'] = (catCount[t.category||'기타']||0)+1;
-    });
-    return { uid, u, tasks };
+  // 전체 집계 (2026 기준 = 현재 전체 데이터)
+  const allTasksList = users.flatMap(([uid]) => sortedTasks(uid).map(([tid,t]) => ({uid,tid,t})));
+  const projNames = new Set(allTasksList.map(({t}) => t.projectName).filter(Boolean));
+
+  let totalAmt=0, cntProp=0, cntDone=0, cntProg=0, cntDraw=0, cntMake=0, cntTech=0;
+  const catCount = {}, siteCount = {};
+  allTasksList.forEach(({t}) => {
+    const amt = Number(t.amount)||0;
+    totalAmt += amt;
+    const cat = t.category || '기타';
+    catCount[cat] = (catCount[cat]||0)+1;
+    if (cat==='제안') cntProp++;
+    else if (cat==='완료') cntDone++;
+    else if (cat==='도면') cntDraw++;
+    else if (cat==='제작') cntMake++;
+    else if (cat==='기술지원'||cat==='테스트') cntTech++;
+    else cntProg++;
+    // 사업장 매칭
+    const site = matchSite(t.projectName||'');
+    if (site) siteCount[site.name] = (siteCount[site.name]||0)+1;
   });
 
-  const maxCount = Math.max(...personData.map(p=>p.tasks.length), 1);
+  // 이번 주 담당자별 집계 (프로젝트 수 기준)
+  const personData = users.map(([uid,u]) => {
+    const weekTasks = sortedTasks(uid).filter(([,t]) => taskWeekLabel(t) === thisWeek && !isTaskArchived(t));
+    const weekProjs = new Set(weekTasks.map(([,t])=>t.projectName));
+    return { uid, u, tasks:weekTasks, projCount:weekProjs.size };
+  });
+  const maxProj = Math.max(...personData.map(p=>p.projCount), 1);
 
-  // 도넛 차트 데이터
   const catOrder = ['실행','제안','신규','완료','도면','제작','테스트','개발','기술지원','기타'];
-  const pieData = catOrder.filter(c=>catCount[c]).map(c=>({ label:c, value:catCount[c], bg:CAT_BG[c]||'#f3f4f6', fg:CAT_FG[c]||'#374151' }));
+  const pieData = catOrder.filter(c=>catCount[c]).map(c=>({label:c,value:catCount[c],bg:CAT_BG[c]||'#f3f4f6',fg:CAT_FG[c]||'#374151'}));
+  const totalCat = Object.values(catCount).reduce((a,b)=>a+b,0);
+
+  const fmtAmt = v => {
+    if (v >= 1e8) return `${(v/1e8).toFixed(1)}억`;
+    if (v >= 1e4) return `${Math.round(v/1e4)}만`;
+    return v.toLocaleString('ko-KR');
+  };
 
   return `<div class="dashboard">
     <div class="dash-head">
       <div class="dash-title">DASHBOARD</div>
-      <div class="dash-week">${thisWeek} 기준</div>
+      <div class="dash-week">2026년 전체 기준</div>
     </div>
 
-    <div class="stat-grid">
-      <div class="stat-card">
-        <div class="stat-label">이번 주 전체</div>
-        <div class="stat-value">${totalAll}</div>
-        <div class="stat-sub">건</div>
+    <!-- 2026 연간 통계 -->
+    <div class="stat-grid-7">
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">총 프로젝트</div>
+        <div class="stat-value-sm">${projNames.size}</div>
+        <div class="stat-sub-sm">건</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">완료</div>
-        <div class="stat-value" style="color:#166534">${totalDone}</div>
-        <div class="stat-sub">건</div>
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">총 금액</div>
+        <div class="stat-value-sm" style="font-size:18px">${fmtAmt(totalAmt)}</div>
+        <div class="stat-sub-sm">원</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">제안</div>
-        <div class="stat-value" style="color:#92400e">${totalProp}</div>
-        <div class="stat-sub">건</div>
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">제안</div>
+        <div class="stat-value-sm" style="color:#92400e">${cntProp}</div>
+        <div class="stat-sub-sm">건</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">진행중</div>
-        <div class="stat-value" style="color:#1d4ed8">${totalAll-totalDone-totalProp}</div>
-        <div class="stat-sub">건</div>
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">진행중</div>
+        <div class="stat-value-sm" style="color:#1d4ed8">${cntProg}</div>
+        <div class="stat-sub-sm">건</div>
+      </div>
+    </div>
+    <div class="stat-grid-3">
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">도면</div>
+        <div class="stat-value-sm" style="color:#5b21b6">${cntDraw}</div>
+        <div class="stat-sub-sm">건</div>
+      </div>
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">제작</div>
+        <div class="stat-value-sm" style="color:#991b1b">${cntMake}</div>
+        <div class="stat-sub-sm">건</div>
+      </div>
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">기술지원</div>
+        <div class="stat-value-sm" style="color:#0369a1">${cntTech}</div>
+        <div class="stat-sub-sm">건 (테스트 포함)</div>
       </div>
     </div>
 
+    <!-- 차트 -->
     <div class="dash-charts">
       <div class="dash-card">
-        <div class="dash-card-title">담당자별 업무 수</div>
-        ${personData.map(({u,tasks}) => `
+        <div class="dash-card-title">이번 주 담당자별 프로젝트 수</div>
+        ${personData.map(({u,projCount}) => `
           <div class="bar-row">
             <div class="bar-name">${esc(u.name)}</div>
-            <div class="bar-track"><div class="bar-fill" style="width:${Math.round(tasks.length/maxCount*100)}%;background:${u.color||'#999'}"></div></div>
-            <div class="bar-count">${tasks.length}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.round(projCount/maxProj*100)}%;background:${u.color||'#999'}"></div></div>
+            <div class="bar-count">${projCount}</div>
           </div>`).join('')}
       </div>
       <div class="dash-card">
-        <div class="dash-card-title">진행구분 분포</div>
+        <div class="dash-card-title">진행구분 분포 (전체)</div>
         ${pieData.length ? `<div class="donut-wrap">
-          ${makePie(pieData, totalAll)}
+          ${makePie(pieData, totalCat)}
           <div class="donut-legend">
             ${pieData.map(d=>`<div class="legend-row">
               <div class="legend-dot" style="background:${d.bg};border:1px solid ${d.fg}40"></div>
@@ -836,7 +994,43 @@ function renderDashboard() {
       </div>
     </div>
 
-    <div class="dash-card-title" style="margin-bottom:12px">담당자별 이번 주 현황</div>
+    <!-- 사업장 관리 -->
+    <div class="site-admin-wrap">
+      <div class="site-admin-title">
+        🏢 사업장별 현황
+        <button style="margin-left:auto;padding:3px 10px;background:#f5f5f5;border:none;border-radius:4px;font-family:inherit;font-size:11px;cursor:pointer"
+          onclick="toggleSiteAdmin()">사업장 관리</button>
+      </div>
+      ${Object.keys(siteCount).length ? `
+        <div class="dash-charts" style="margin-bottom:0">
+          <div style="grid-column:1/-1">
+            ${Object.entries(siteCount).sort((a,b)=>b[1]-a[1]).map(([name,cnt])=>{
+              const maxSite = Math.max(...Object.values(siteCount));
+              return `<div class="bar-row">
+                <div class="bar-name" style="min-width:100px">${esc(name)}</div>
+                <div class="bar-track"><div class="bar-fill" style="width:${Math.round(cnt/maxSite*100)}%;background:#6366f1"></div></div>
+                <div class="bar-count">${cnt}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>` : '<div style="font-size:12px;color:#bbb">사업장을 등록하면 프로젝트명에서 자동 매칭됩니다.</div>'}
+      <div class="site-list" id="siteList" style="margin-top:12px">
+        ${Object.entries(allSites).map(([sid,s])=>`
+          <div class="site-row">
+            <span class="site-name">${esc(s.name)}</span>
+            <span class="site-kws">키워드: ${esc(s.keywords||'')}</span>
+            <button class="site-del" onclick="delSite('${sid}')">삭제</button>
+          </div>`).join('') || ''}
+      </div>
+      <div class="site-add-row hidden" id="siteAddRow">
+        <input id="sa-name" placeholder="사업장명 (예: 삼성SDI 기흥)" style="flex:1">
+        <input id="sa-kws" placeholder="키워드, 쉼표로 구분 (예: 삼성SDI,기흥)" style="flex:2">
+        <button class="btn-site-add" onclick="addSite()">등록</button>
+      </div>
+    </div>
+
+    <!-- 이번 주 담당자별 현황 -->
+    <div class="dash-card-title" style="margin-bottom:12px">이번 주 (${thisWeek}) 담당자별 현황</div>
     <div class="dash-people">
       ${personData.map(({uid,u,tasks}) => `
         <div class="dash-person-card">
@@ -848,12 +1042,12 @@ function renderDashboard() {
           ${tasks.length ? tasks.map(([,t])=>`
             <div class="dash-task-row">
               <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};flex-shrink:0">${esc(t.category||'실행')}</span>
-              <div>
+              <div style="min-width:0">
                 <div class="dash-task-name">${esc(t.projectName||'(제목 없음)')}</div>
-                ${t.progress?`<div class="dash-task-prog">${esc(t.progress.split('\n')[0])}</div>`:''}
+                ${t.amount?`<div style="font-size:10px;color:#888">${fmtAmount(t.amount)}</div>`:''}
               </div>
             </div>`).join('')
-          : '<div style="font-size:11px;color:#ccc;padding:8px 0">업무 없음</div>'}
+          : '<div style="font-size:11px;color:#ccc;padding:8px 0">이번 주 업무 없음</div>'}
         </div>`).join('')}
     </div>
   </div>`;
@@ -944,10 +1138,73 @@ window.toggleMemoP = (uid, tid) => {
   document.getElementById(`pm-${uid}-${tid}`)?.classList.toggle('open');
 };
 
+// 이전 프로젝트 섹션 토글
+window.toggleArchived = (uid) => {
+  const body = document.getElementById(`wb-${uid}-archived`);
+  if (!body) return;
+  const isOpen = openedArchived.has(uid);
+  if (isOpen) { openedArchived.delete(uid); body.classList.add('collapsed'); body.previousElementSibling?.querySelector('.week-chevron')?.classList.remove('open'); }
+  else         { openedArchived.add(uid);    body.classList.remove('collapsed'); body.previousElementSibling?.querySelector('.week-chevron')?.classList.add('open'); }
+};
+
+// 수동 이전 프로젝트로 이동
+window.archiveTask = (uid, tid) => {
+  update(ref(db, `tasks/${uid}/${tid}`), { archived: true, updatedBy: currentProfile.name, updatedAt: Date.now() });
+};
+window.unarchiveTask = (uid, tid) => {
+  update(ref(db, `tasks/${uid}/${tid}`), { archived: false, weekLabel: currentWeekLabel(), updatedBy: currentProfile.name, updatedAt: Date.now() });
+};
+
+// 카드 내 업무 추가 폼 토글
+window.togglePTA = (uid, tid0) => {
+  document.getElementById(`pta-${uid}-${tid0}`)?.classList.toggle('open');
+};
+
+// 카드 내 업무 추가 실행
+window.addTaskToProj = (uid, tid0) => {
+  const base = allTasks[uid]?.[tid0];
+  if (!base) return;
+  const g = s => document.getElementById(`ptat-${s}-${uid}-${tid0}`)?.value ?? '';
+  const prog = document.getElementById(`ptap-${uid}-${tid0}`)?.value.trim();
+  const amt = g('amt');
+  push(ref(db, `tasks/${uid}`), {
+    projectName:   base.projectName,
+    weekLabel:     base.weekLabel || taskWeekLabel(base),
+    category:      g('cat') || base.category || '실행',
+    drawingStatus: '—',
+    progress:      prog || '',
+    amount:        amt===''?'':Number(amt)||0,
+    schedule:      g('sch'),
+    partner:       g('par'),
+    notes:         g('notes'),
+    memo: '',
+    order: Date.now(), updatedBy: currentProfile.name, updatedAt: Date.now()
+  });
+  // 입력값 초기화
+  const pta = document.getElementById(`pta-${uid}-${tid0}`);
+  if (pta) { pta.querySelectorAll('input,textarea').forEach(el=>el.value=''); pta.classList.remove('open'); }
+};
+
 // 삭제
 window.delTask = (uid, tid) => {
   if (!confirm('업무 항목을 삭제할까요?')) return;
   remove(ref(db, `tasks/${uid}/${tid}`));
+};
+
+// 사업장 관리
+window.toggleSiteAdmin = () => {
+  document.getElementById('siteAddRow')?.classList.toggle('hidden');
+};
+window.addSite = () => {
+  const name = document.getElementById('sa-name')?.value.trim();
+  const kws  = document.getElementById('sa-kws')?.value.trim();
+  if (!name) return;
+  push(ref(db,'sites'), { name, keywords: kws || name });
+  document.getElementById('sa-name').value=''; document.getElementById('sa-kws').value='';
+};
+window.delSite = (sid) => {
+  if (!confirm('사업장을 삭제할까요?')) return;
+  remove(ref(db,`sites/${sid}`));
 };
 
 // 메모 추가
@@ -1116,8 +1373,13 @@ function parseExcel(rows) {
     const notesB = String(row[cols.addMemo] || '').trim();
     const notes  = [notesA, notesB].filter(Boolean).join(' / ');
 
+    // 주차 컬럼에서 weekLabel 추출 (expandMerges로 각 행에 채워진 값)
+    const weekRaw = String(row[cols.week] || '').trim();
+    const weekLabelVal = weekRaw.includes('주차') ? weekRaw : currentWeekLabel();
+
     const task = {
       projectName:   projVal,
+      weekLabel:     weekLabelVal,
       category:      mapCat(String(row[cols.category] || '')),
       drawingStatus: mapDraw(String(row[cols.drawing]  || '')),
       progress:      String(row[cols.progress] || '').trim(),
@@ -1272,7 +1534,7 @@ window.confirmImport = async () => {
       const newRef = push(ref(db, `tasks/${uid}`));
       updates[`tasks/${uid}/${newRef.key}`] = {
         ...t, memo: '',
-        weekLabel: currentWeekLabel(),
+        weekLabel: t.weekLabel || currentWeekLabel(),  // Excel의 주차 정보 보존
         order: Date.now() + count,
         updatedBy: currentProfile.name,
         updatedAt: Date.now()
