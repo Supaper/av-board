@@ -81,7 +81,6 @@
     .tab-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
 
     /* ── 보드 ── */
-    #board { padding: 20px 24px; }
 
     .section-header {
       display: flex; align-items: center; justify-content: space-between;
@@ -182,7 +181,7 @@
     .drag-handle:active { cursor: grabbing; }
 
     /* ── 릴리즈노트 스타일 보드 ── */
-    #board { padding: 20px 24px; max-width: 900px; margin: 0 auto; }
+    #board { padding: 20px clamp(20px, 3vw, 64px); }
 
     /* 유저 헤더 */
     .rn-person-head { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
@@ -406,6 +405,23 @@
     /* ── 대시보드 개선 ── */
     .stat-grid-7 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:10px; }
     .stat-grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:22px; }
+
+    /* ── 반응형 ── */
+    @media (min-width: 1280px) {
+      .stat-grid-7 { grid-template-columns: repeat(7,1fr); }
+    }
+    @media (min-width: 1440px) {
+      .stat-grid   { grid-template-columns: repeat(4,1fr); }
+      .dash-charts { grid-template-columns: 2fr 1fr; }
+      .dash-people { grid-template-columns: repeat(auto-fill, minmax(300px,1fr)); }
+    }
+    @media (max-width: 767px) {
+      .stat-grid   { grid-template-columns: repeat(2,1fr); }
+      .stat-grid-7 { grid-template-columns: repeat(2,1fr); }
+      .stat-grid-3 { grid-template-columns: repeat(2,1fr); }
+      .dash-charts { grid-template-columns: 1fr; }
+      .dash-people { grid-template-columns: 1fr; }
+    }
     .stat-card-sm { background:white; border-radius:10px; padding:14px 16px; border:1px solid #e8e8e8; box-shadow:0 1px 4px rgba(0,0,0,0.04); cursor:pointer; transition:box-shadow 0.15s,transform 0.1s; user-select:none; }
     .stat-card-sm:hover { box-shadow:0 4px 14px rgba(0,0,0,0.12); transform:translateY(-1px); }
     .stat-card-sm:active { transform:translateY(0); }
