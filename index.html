@@ -227,7 +227,7 @@
     <h2>접근 권한 없음</h2>
     <p>등록되지 않은 계정입니다.<br>관리자에게 이메일 등록을 요청하세요.</p>
     <button style="padding:9px 22px;background:#f5f5f5;border:none;border-radius:6px;font-family:inherit;cursor:pointer;font-size:13px"
-      onclick="firebase.auth().signOut().then(()=>{ hide('accessDenied'); show('loginScreen'); })">다른 계정으로 로그인</button>
+      onclick="doSignOut()">다른 계정으로 로그인</button>
   </div>
 </div>
 
@@ -241,7 +241,7 @@
         <span id="hName"></span>
       </div>
       <a href="admin.html" class="btn-header">관리자</a>
-      <button class="btn-header" onclick="firebase.auth().signOut()">로그아웃</button>
+      <button class="btn-header" onclick="doSignOut()">로그아웃</button>
     </div>
   </div>
 
@@ -249,14 +249,17 @@
   <div id="board"><div id="boardContent"></div></div>
 </div>
 
-<!-- Firebase CDN -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script type="module">
+import { initializeApp }            from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithRedirect,
+         getRedirectResult, onAuthStateChanged, signOut }
+                                     from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getDatabase, ref, onValue, push, set, update, remove,
+         query, orderByChild, equalTo, get }
+                                     from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 
-<script>
 // ── Firebase 초기화 ──────────────────────────────────────────
-const firebaseConfig = {
+const app  = initializeApp({
   apiKey: "AIzaSyDkXa53xtOZIJtfQuS24eEQjgq4J2czZOA",
   authDomain: "av-board-8e12f.firebaseapp.com",
   databaseURL: "https://av-board-8e12f-default-rtdb.asia-southeast1.firebasedatabase.app",
@@ -264,10 +267,9 @@ const firebaseConfig = {
   storageBucket: "av-board-8e12f.firebasestorage.app",
   messagingSenderId: "962231746635",
   appId: "1:962231746635:web:22500e6d2d2cd548880dce"
-};
-firebase.initializeApp(firebaseConfig);
-const db   = firebase.database();
-const auth = firebase.auth();
+});
+const auth = getAuth(app);
+const db   = getDatabase(app);
 
 // ── 상태 ────────────────────────────────────────────────────
 let currentProfile = null;
@@ -276,100 +278,73 @@ let allTasks = {};
 let activeTab = null;
 
 // ── 화면 전환 ────────────────────────────────────────────────
-const $  = id => document.getElementById(id);
+const $    = id => document.getElementById(id);
 const show = id => $(id).classList.remove('hidden');
 const hide = id => $(id).classList.add('hidden');
 
 // ── 인증 ────────────────────────────────────────────────────
-function signInWithGoogle() {
-  auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
-}
+window.signInWithGoogle = () => signInWithRedirect(auth, new GoogleAuthProvider());
+window.doSignOut = () => signOut(auth).then(() => { hide('app'); hide('accessDenied'); show('loginScreen'); });
 
-auth.onAuthStateChanged(async user => {
+async function handleUser(user) {
   if (!user) { hide('loadingScreen'); hide('accessDenied'); show('loginScreen'); return; }
-
   try {
-    const snap = await db.ref('users').orderByChild('email').equalTo(user.email).once('value');
-    if (!snap.exists()) {
-      hide('loadingScreen'); show('accessDenied'); return;
-    }
-
-  const entries = snap.val();
-  const key = Object.keys(entries)[0];
-  currentProfile = { id: key, ...entries[key] };
-
-  $('hName').textContent = currentProfile.name;
-  $('hDot').style.background = currentProfile.color || '#666';
-
+    const snap = await get(query(ref(db, 'users'), orderByChild('email'), equalTo(user.email)));
+    if (!snap.exists()) { hide('loadingScreen'); show('accessDenied'); return; }
+    const entries = snap.val();
+    const key = Object.keys(entries)[0];
+    currentProfile = { id: key, ...entries[key] };
+    $('hName').textContent = currentProfile.name;
+    $('hDot').style.background = currentProfile.color || '#666';
     activeTab = currentProfile.id;
     startListeners();
     hide('loadingScreen'); show('app');
   } catch (e) {
-    console.error('DB 접근 오류:', e);
+    console.error('DB 오류:', e);
     hide('loadingScreen'); show('accessDenied');
   }
-});
+}
+
+// 리다이렉트 결과 처리 후 일반 상태 감지
+getRedirectResult(auth).catch(() => {});
+onAuthStateChanged(auth, handleUser);
 
 // ── 리얼타임 리스너 ──────────────────────────────────────────
 function startListeners() {
-  db.ref('users').on('value', snap => {
-    allUsers = snap.val() || {};
-    renderTabs();
-    renderBoard();
-  });
-  db.ref('tasks').on('value', snap => {
-    allTasks = snap.val() || {};
-    renderBoard();
-  });
+  onValue(ref(db, 'users'), snap => { allUsers = snap.val() || {}; renderTabs(); renderBoard(); });
+  onValue(ref(db, 'tasks'), snap => { allTasks = snap.val() || {}; renderBoard(); });
 }
 
 // ── 탭 ──────────────────────────────────────────────────────
 function renderTabs() {
-  const sorted = Object.entries(allUsers)
-    .sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''));
-
+  const sorted = Object.entries(allUsers).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
   $('tabs').innerHTML =
-    sorted.map(([uid, u]) => `
-      <div class="tab ${activeTab === uid ? 'active' : ''}" onclick="switchTab('${uid}')">
-        <span class="tab-dot" style="background:${u.color || '#999'}"></span>${esc(u.name)}
-      </div>
-    `).join('') +
-    `<div class="tab ${activeTab === 'all' ? 'active' : ''}" onclick="switchTab('all')">전체 보기</div>`;
+    sorted.map(([uid, u]) =>
+      `<div class="tab ${activeTab===uid?'active':''}" onclick="switchTab('${uid}')">
+        <span class="tab-dot" style="background:${u.color||'#999'}"></span>${esc(u.name)}
+      </div>`).join('') +
+    `<div class="tab ${activeTab==='all'?'active':''}" onclick="switchTab('all')">전체 보기</div>`;
 }
-
-function switchTab(id) {
-  activeTab = id;
-  renderTabs();
-  renderBoard();
-}
+window.switchTab = id => { activeTab = id; renderTabs(); renderBoard(); };
 
 // ── 보드 렌더 ────────────────────────────────────────────────
 function renderBoard() {
-  $('boardContent').innerHTML =
-    activeTab === 'all' ? renderAll() : renderUser(activeTab);
-  attachMemo();
-  attachDrag();
+  $('boardContent').innerHTML = activeTab === 'all' ? renderAll() : renderUser(activeTab);
+  attachMemo(); attachDrag();
 }
 
-// ── 카테고리 / 도면 색상 ─────────────────────────────────────
-const CAT_BG  = { 실행:'#dbeafe',제안:'#fef3c7',신규:'#dcfce7',도면:'#ede9fe',제작:'#fee2e2',테스트:'#ffedd5',개발:'#e0f2fe',기술지원:'#fce7f3',기타:'#f3f4f6' };
-const CAT_FG  = { 실행:'#1d4ed8',제안:'#92400e',신규:'#166534',도면:'#5b21b6',제작:'#991b1b',테스트:'#c2410c',개발:'#0369a1',기술지원:'#9d174d',기타:'#374151' };
-const DRAW_BG = { 작성필요:'#fee2e2',작성중:'#fef3c7',검토중:'#dbeafe',완료:'#dcfce7','—':'#f3f4f6' };
+// ── 색상 테이블 ──────────────────────────────────────────────
+const CAT_BG  = {실행:'#dbeafe',제안:'#fef3c7',신규:'#dcfce7',도면:'#ede9fe',제작:'#fee2e2',테스트:'#ffedd5',개발:'#e0f2fe',기술지원:'#fce7f3',기타:'#f3f4f6'};
+const CAT_FG  = {실행:'#1d4ed8',제안:'#92400e',신규:'#166534',도면:'#5b21b6',제작:'#991b1b',테스트:'#c2410c',개발:'#0369a1',기술지원:'#9d174d',기타:'#374151'};
+const DRAW_BG = {작성필요:'#fee2e2',작성중:'#fef3c7',검토중:'#dbeafe',완료:'#dcfce7','—':'#f3f4f6'};
 const CATS    = ['실행','제안','신규','도면','제작','테스트','개발','기술지원','기타'];
 const DRAWS   = ['—','작성필요','작성중','검토중','완료'];
 
-function fmtAmount(v) {
-  if (!v && v !== 0) return '';
-  return Number(v).toLocaleString('ko-KR') + '원';
-}
+function fmtAmount(v) { return (!v && v!==0) ? '' : Number(v).toLocaleString('ko-KR')+'원'; }
 function fmtTs(ts) {
   if (!ts) return '';
   const d = new Date(ts);
-  const mm = String(d.getMonth()+1).padStart(2,'0');
-  const dd = String(d.getDate()).padStart(2,'0');
-  const hh = String(d.getHours()).padStart(2,'0');
-  const mi = String(d.getMinutes()).padStart(2,'0');
-  return `${mm}/${dd} ${hh}:${mi}`;
+  return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
 // ── 단일 유저 뷰 ─────────────────────────────────────────────
@@ -378,74 +353,55 @@ function renderUser(uid) {
   if (!u) return '<div class="empty-state">사용자를 찾을 수 없습니다.</div>';
   const isOwn = uid === currentProfile.id;
   const tasks = sortedTasks(uid);
-
   return `
     <div class="section-header">
-      <div class="section-title">${esc(u.name)} ${u.title ? '· ' + esc(u.title) : ''} ${u.department ? '(' + esc(u.department) + ')' : ''}</div>
+      <div class="section-title">${esc(u.name)} ${u.title?'· '+esc(u.title):''} ${u.department?'('+esc(u.department)+')':''}</div>
       ${isOwn ? `<button class="btn-add" onclick="addTask('${uid}')">+ 업무 추가</button>` : ''}
     </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            ${isOwn ? '<th style="width:28px"></th>' : ''}
-            <th style="min-width:140px">프로젝트명</th>
-            <th style="width:88px">진행구분</th>
-            <th style="min-width:190px">진행상황</th>
-            <th style="width:80px">도면상태</th>
-            <th style="width:105px">금액</th>
-            <th style="width:88px">실행일정</th>
-            <th style="width:88px">협력업체</th>
-            <th style="width:100px">비고</th>
-            <th style="width:64px">메모</th>
-            <th style="width:80px">수정</th>
-            ${isOwn ? '<th style="width:34px"></th>' : ''}
-          </tr>
-        </thead>
-        <tbody id="tbody-${uid}">
-          ${tasks.length
-            ? tasks.map(([tid, t]) => rowHtml(uid, tid, t, isOwn)).join('')
-            : `<tr><td colspan="${isOwn ? 12 : 10}" class="empty-state">업무 항목이 없습니다.</td></tr>`}
-        </tbody>
-      </table>
-    </div>`;
+    <div class="table-wrap"><table>
+      <thead><tr>
+        ${isOwn?'<th style="width:28px"></th>':''}
+        <th style="min-width:140px">프로젝트명</th><th style="width:88px">진행구분</th>
+        <th style="min-width:190px">진행상황</th><th style="width:80px">도면상태</th>
+        <th style="width:105px">금액</th><th style="width:88px">실행일정</th>
+        <th style="width:88px">협력업체</th><th style="width:100px">비고</th>
+        <th style="width:64px">메모</th><th style="width:80px">수정</th>
+        ${isOwn?'<th style="width:34px"></th>':''}
+      </tr></thead>
+      <tbody id="tbody-${uid}">
+        ${tasks.length ? tasks.map(([tid,t])=>rowHtml(uid,tid,t,isOwn)).join('')
+          : `<tr><td colspan="${isOwn?12:10}" class="empty-state">업무 항목이 없습니다.</td></tr>`}
+      </tbody>
+    </table></div>`;
 }
 
 function rowHtml(uid, tid, t, isOwn) {
-  const catBg = CAT_BG[t.category]  || '#f3f4f6';
-  const catFg = CAT_FG[t.category]  || '#374151';
-  const drBg  = DRAW_BG[t.drawingStatus] || '#f3f4f6';
   const memoCount = t.memo ? t.memo.trim().split('\n').filter(Boolean).length : 0;
   const hasMemo = memoCount > 0;
-
   if (isOwn) {
     return `
       <tr data-uid="${uid}" data-tid="${tid}" draggable="true">
         <td><span class="drag-handle">⠿</span></td>
-        <td><input class="editable" value="${esc(t.projectName||'')}" placeholder="프로젝트명" onblur="save('${uid}','${tid}','projectName',this.value)"></td>
-        <td>
-          <select class="editable" onchange="save('${uid}','${tid}','category',this.value)">
-            ${CATS.map(c => `<option value="${c}" ${t.category===c?'selected':''}>${c}</option>`).join('')}
-          </select>
-        </td>
-        <td><textarea class="editable" rows="2" placeholder="진행상황" onblur="save('${uid}','${tid}','progress',this.value)">${esc(t.progress||'')}</textarea></td>
-        <td>
-          <select class="editable" onchange="save('${uid}','${tid}','drawingStatus',this.value)">
-            ${DRAWS.map(s => `<option value="${s}" ${t.drawingStatus===s?'selected':''}>${s}</option>`).join('')}
-          </select>
-        </td>
-        <td><input class="editable" type="number" placeholder="0" value="${t.amount||''}" onblur="save('${uid}','${tid}','amount',this.value)"></td>
-        <td><input class="editable" placeholder="일정" value="${esc(t.schedule||'')}" onblur="save('${uid}','${tid}','schedule',this.value)"></td>
-        <td><input class="editable" placeholder="업체명" value="${esc(t.partner||'')}" onblur="save('${uid}','${tid}','partner',this.value)"></td>
-        <td><input class="editable" placeholder="비고" value="${esc(t.notes||'')}" onblur="save('${uid}','${tid}','notes',this.value)"></td>
+        <td><input class="editable" value="${esc(t.projectName||'')}" placeholder="프로젝트명" onblur="saveField('${uid}','${tid}','projectName',this.value)"></td>
+        <td><select class="editable" onchange="saveField('${uid}','${tid}','category',this.value)">
+          ${CATS.map(c=>`<option value="${c}" ${t.category===c?'selected':''}>${c}</option>`).join('')}
+        </select></td>
+        <td><textarea class="editable" rows="2" placeholder="진행상황" onblur="saveField('${uid}','${tid}','progress',this.value)">${esc(t.progress||'')}</textarea></td>
+        <td><select class="editable" onchange="saveField('${uid}','${tid}','drawingStatus',this.value)">
+          ${DRAWS.map(s=>`<option value="${s}" ${t.drawingStatus===s?'selected':''}>${s}</option>`).join('')}
+        </select></td>
+        <td><input class="editable" type="number" placeholder="0" value="${t.amount||''}" onblur="saveField('${uid}','${tid}','amount',this.value)"></td>
+        <td><input class="editable" placeholder="일정" value="${esc(t.schedule||'')}" onblur="saveField('${uid}','${tid}','schedule',this.value)"></td>
+        <td><input class="editable" placeholder="업체명" value="${esc(t.partner||'')}" onblur="saveField('${uid}','${tid}','partner',this.value)"></td>
+        <td><input class="editable" placeholder="비고" value="${esc(t.notes||'')}" onblur="saveField('${uid}','${tid}','notes',this.value)"></td>
         <td><button class="memo-btn ${hasMemo?'has-memo':''}" data-uid="${uid}" data-tid="${tid}">💬 ${memoCount}</button></td>
         <td class="meta">${esc(t.updatedBy||'')}<br>${fmtTs(t.updatedAt)}</td>
         <td><button class="btn-del" onclick="delTask('${uid}','${tid}')">×</button></td>
       </tr>
-      <tr class="memo-row hidden" id="memo-${uid}-${tid}">
-        <td colspan="12">${memoBox(uid, tid, t, true)}</td>
-      </tr>`;
+      <tr class="memo-row hidden" id="memo-${uid}-${tid}"><td colspan="12">${memoBox(uid,tid,t,true)}</td></tr>`;
   } else {
+    const catBg = CAT_BG[t.category]||'#f3f4f6', catFg = CAT_FG[t.category]||'#374151';
+    const drBg  = DRAW_BG[t.drawingStatus]||'#f3f4f6';
     return `
       <tr data-uid="${uid}" data-tid="${tid}">
         <td>${esc(t.projectName||'')}</td>
@@ -453,85 +409,60 @@ function rowHtml(uid, tid, t, isOwn) {
         <td style="white-space:pre-wrap;line-height:1.5">${esc(t.progress||'')}</td>
         <td><span class="draw-badge" style="background:${drBg}">${esc(t.drawingStatus||'—')}</span></td>
         <td style="white-space:nowrap">${fmtAmount(t.amount)}</td>
-        <td>${esc(t.schedule||'')}</td>
-        <td>${esc(t.partner||'')}</td>
-        <td>${esc(t.notes||'')}</td>
+        <td>${esc(t.schedule||'')}</td><td>${esc(t.partner||'')}</td><td>${esc(t.notes||'')}</td>
         <td><button class="memo-btn ${hasMemo?'has-memo':''}" data-uid="${uid}" data-tid="${tid}">💬 ${memoCount}</button></td>
         <td class="meta">${esc(t.updatedBy||'')}<br>${fmtTs(t.updatedAt)}</td>
       </tr>
-      <tr class="memo-row hidden" id="memo-${uid}-${tid}">
-        <td colspan="10">${memoBox(uid, tid, t, false)}</td>
-      </tr>`;
+      <tr class="memo-row hidden" id="memo-${uid}-${tid}"><td colspan="10">${memoBox(uid,tid,t,false)}</td></tr>`;
   }
 }
 
 function memoBox(uid, tid, t, editable) {
   const lines = t.memo ? t.memo.trim().split('\n').filter(Boolean) : [];
-  return `
-    <div class="memo-box">
-      <div class="memo-entries">
-        ${lines.length
-          ? lines.map(l => `<div class="memo-entry">${esc(l)}</div>`).join('')
-          : '<span style="color:#bbb">메모 없음</span>'}
-      </div>
-      ${editable ? `
-        <div class="memo-input-row">
-          <input class="memo-input" id="mi-${uid}-${tid}" placeholder="메모 입력 후 Enter"
-            onkeydown="if(event.key==='Enter')addMemo('${uid}','${tid}')">
-          <button class="memo-submit" onclick="addMemo('${uid}','${tid}')">추가</button>
-        </div>` : ''}
-    </div>`;
+  return `<div class="memo-box">
+    <div class="memo-entries">${lines.length
+      ? lines.map(l=>`<div class="memo-entry">${esc(l)}</div>`).join('')
+      : '<span style="color:#bbb">메모 없음</span>'}</div>
+    ${editable ? `<div class="memo-input-row">
+      <input class="memo-input" id="mi-${uid}-${tid}" placeholder="메모 입력 후 Enter"
+        onkeydown="if(event.key==='Enter')addMemo('${uid}','${tid}')">
+      <button class="memo-submit" onclick="addMemo('${uid}','${tid}')">추가</button>
+    </div>` : ''}
+  </div>`;
 }
 
 // ── 전체 보기 ────────────────────────────────────────────────
 function renderAll() {
-  const sorted = Object.entries(allUsers).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
+  const sorted = Object.entries(allUsers).sort((a,b)=>(a[1].name||'').localeCompare(b[1].name||''));
   if (!sorted.length) return '<div class="empty-state">등록된 사용자가 없습니다.</div>';
-
-  return sorted.map(([uid, u]) => {
+  return sorted.map(([uid,u]) => {
     const tasks = sortedTasks(uid);
-    return `
-      <div class="all-section">
-        <div class="all-section-head">
-          <span class="all-user-badge" style="background:${u.color||'#999'}">
-            ${esc(u.name)} ${u.title ? esc(u.title) : ''}
-          </span>
-          <span style="font-size:12px;color:#888">${esc(u.department||'')} · ${tasks.length}건</span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th style="min-width:140px">프로젝트명</th>
-                <th style="width:88px">진행구분</th>
-                <th style="min-width:190px">진행상황</th>
-                <th style="width:80px">도면상태</th>
-                <th style="width:105px">금액</th>
-                <th style="width:88px">실행일정</th>
-                <th style="width:88px">협력업체</th>
-                <th style="width:100px">비고</th>
-                <th style="width:64px">메모</th>
-                <th style="width:80px">수정</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tasks.length
-                ? tasks.map(([tid, t]) => rowHtml(uid, tid, t, false)).join('')
-                : '<tr><td colspan="10" class="empty-state" style="padding:14px">업무 없음</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </div>`;
+    return `<div class="all-section">
+      <div class="all-section-head">
+        <span class="all-user-badge" style="background:${u.color||'#999'}">${esc(u.name)} ${u.title?esc(u.title):''}</span>
+        <span style="font-size:12px;color:#888">${esc(u.department||'')} · ${tasks.length}건</span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th style="min-width:140px">프로젝트명</th><th style="width:88px">진행구분</th>
+          <th style="min-width:190px">진행상황</th><th style="width:80px">도면상태</th>
+          <th style="width:105px">금액</th><th style="width:88px">실행일정</th>
+          <th style="width:88px">협력업체</th><th style="width:100px">비고</th>
+          <th style="width:64px">메모</th><th style="width:80px">수정</th>
+        </tr></thead>
+        <tbody>${tasks.length
+          ? tasks.map(([tid,t])=>rowHtml(uid,tid,t,false)).join('')
+          : '<tr><td colspan="10" class="empty-state" style="padding:14px">업무 없음</td></tr>'}
+        </tbody>
+      </table></div>
+    </div>`;
   }).join('');
 }
 
 // ── 메모 토글 ────────────────────────────────────────────────
 function attachMemo() {
   document.querySelectorAll('.memo-btn').forEach(btn => {
-    btn.onclick = () => {
-      const row = $(`memo-${btn.dataset.uid}-${btn.dataset.tid}`);
-      if (row) row.classList.toggle('hidden');
-    };
+    btn.onclick = () => { const r = $(`memo-${btn.dataset.uid}-${btn.dataset.tid}`); if(r) r.classList.toggle('hidden'); };
   });
 }
 
@@ -539,51 +470,45 @@ function attachMemo() {
 function attachDrag() {
   let src = null;
   document.querySelectorAll('tr[draggable="true"]').forEach(row => {
-    row.addEventListener('dragstart', () => { src = row; row.classList.add('dragging'); });
+    row.addEventListener('dragstart', () => { src=row; row.classList.add('dragging'); });
     row.addEventListener('dragend',   () => { row.classList.remove('dragging'); document.querySelectorAll('.drag-over').forEach(r=>r.classList.remove('drag-over')); });
-    row.addEventListener('dragover',  e => { e.preventDefault(); if (src && src !== row) row.classList.add('drag-over'); });
+    row.addEventListener('dragover',  e => { e.preventDefault(); if(src&&src!==row) row.classList.add('drag-over'); });
     row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
     row.addEventListener('drop', e => {
-      e.preventDefault();
-      if (!src || src === row) return;
+      e.preventDefault(); if(!src||src===row) return;
       row.classList.remove('drag-over');
       const uid = row.dataset.uid;
-      const tbody = row.closest('tbody');
-      const rows = [...tbody.querySelectorAll('tr[data-tid]')];
-      rows.splice(rows.indexOf(src), 1);
-      rows.splice(rows.indexOf(row), 0, src);
+      const rows = [...row.closest('tbody').querySelectorAll('tr[data-tid]')];
+      rows.splice(rows.indexOf(src),1); rows.splice(rows.indexOf(row),0,src);
       const upd = {};
-      rows.forEach((r, i) => { upd[`tasks/${uid}/${r.dataset.tid}/order`] = i; });
-      db.ref().update(upd);
+      rows.forEach((r,i) => { upd[`tasks/${uid}/${r.dataset.tid}/order`] = i; });
+      update(ref(db), upd);
     });
   });
 }
 
 // ── CRUD ─────────────────────────────────────────────────────
-function addTask(uid) {
-  db.ref(`tasks/${uid}`).push({
-    projectName:'', category:'실행', progress:'',
-    drawingStatus:'—', amount:'', schedule:'', partner:'', notes:'', memo:'',
-    order: Date.now(),
-    updatedBy: currentProfile.name, updatedAt: Date.now()
-  });
-}
+window.addTask = uid => push(ref(db, `tasks/${uid}`), {
+  projectName:'', category:'실행', progress:'', drawingStatus:'—',
+  amount:'', schedule:'', partner:'', notes:'', memo:'',
+  order: Date.now(), updatedBy: currentProfile.name, updatedAt: Date.now()
+});
 
-function save(uid, tid, field, value) {
-  const val = field === 'amount' ? (value === '' ? '' : Number(value) || 0) : value;
-  db.ref().update({
+window.saveField = (uid, tid, field, value) => {
+  const val = field==='amount' ? (value===''?'':Number(value)||0) : value;
+  update(ref(db), {
     [`tasks/${uid}/${tid}/${field}`]: val,
     [`tasks/${uid}/${tid}/updatedBy`]: currentProfile.name,
     [`tasks/${uid}/${tid}/updatedAt`]: Date.now()
   });
-}
+};
 
-function delTask(uid, tid) {
+window.delTask = (uid, tid) => {
   if (!confirm('업무 항목을 삭제할까요?')) return;
-  db.ref(`tasks/${uid}/${tid}`).remove();
-}
+  remove(ref(db, `tasks/${uid}/${tid}`));
+};
 
-function addMemo(uid, tid) {
+window.addMemo = (uid, tid) => {
   const input = $(`mi-${uid}-${tid}`);
   const text = input.value.trim();
   if (!text) return;
@@ -591,24 +516,19 @@ function addMemo(uid, tid) {
   const ts = `${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
   const entry = `[${ts} ${currentProfile.name}] ${text}`;
   const prev = allTasks[uid]?.[tid]?.memo || '';
-  db.ref(`tasks/${uid}/${tid}`).update({
-    memo: prev ? prev + '\n' + entry : entry,
-    updatedBy: currentProfile.name,
-    updatedAt: Date.now()
+  update(ref(db, `tasks/${uid}/${tid}`), {
+    memo: prev ? prev+'\n'+entry : entry,
+    updatedBy: currentProfile.name, updatedAt: Date.now()
   });
   input.value = '';
-}
+};
 
 // ── 유틸 ─────────────────────────────────────────────────────
 function sortedTasks(uid) {
-  const raw = allTasks[uid] || {};
-  return Object.entries(raw).sort((a,b) => (a[1].order||0) - (b[1].order||0));
+  return Object.entries(allTasks[uid]||{}).sort((a,b)=>(a[1].order||0)-(b[1].order||0));
 }
-
 function esc(str) {
-  return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
 </body>
