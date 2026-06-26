@@ -248,6 +248,11 @@
     .xl-btn-ok { background: #1a1a2e; color: white; }
     .xl-btn-ok:hover { background: #2d3561; }
     .xl-empty { padding: 32px; text-align: center; color: #bbb; }
+    .xl-table-wrap { overflow-x: auto; }
+    .xl-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 800px; }
+    .xl-table thead th { background: #f8f9fa; padding: 7px 10px; text-align: left; font-weight: 600; color: #555; border-bottom: 2px solid #e8e8e8; white-space: nowrap; }
+    .xl-table tbody tr { border-bottom: 1px solid #f2f2f2; transition: opacity 0.2s; }
+    .xl-table tbody td { padding: 6px 10px; vertical-align: top; }
   </style>
 </head>
 <body>
@@ -607,6 +612,10 @@ function esc(str) {
 }
 
 // ── Excel 가져오기 ────────────────────────────────────────────
+// 스크린샷 분석 기준 고정 컬럼 위치 (0-indexed: A=0, B=1, ...)
+// B:담당자 C:진행구분 D:도면작성 E:프로젝트명 F:진행상황 G:금액 H:실행일정 I:인테리어 J:비고
+const XL_COLS = { person:1, category:2, drawing:3, project:4, progress:5, amount:6, schedule:7, partner:8, notes:9 };
+
 let xlParsed = []; // [{ name, tasks[] }]
 
 window.triggerImport = () => $('excelInput').click();
@@ -618,10 +627,9 @@ $('excelInput').addEventListener('change', async e => {
   e.target.value = '';
   show('loadingScreen');
   try {
-    const buf = await file.arrayBuffer();
-    const wb  = XLSX.read(buf);
-    const ws  = wb.Sheets[wb.SheetNames[0]];
-    // 2D 배열로 변환 후 병합셀 전파
+    const buf  = await file.arrayBuffer();
+    const wb   = XLSX.read(buf);
+    const ws   = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
     expandMerges(ws, rows);
     xlParsed = parseExcel(rows);
@@ -632,7 +640,7 @@ $('excelInput').addEventListener('change', async e => {
   hide('loadingScreen');
 });
 
-// 병합셀 값 전파
+// 병합셀 값 전파 (담당자 같은 세로 병합 처리)
 function expandMerges(ws, rows) {
   (ws['!merges'] || []).forEach(m => {
     const val = rows[m.s.r]?.[m.s.c];
@@ -642,94 +650,96 @@ function expandMerges(ws, rows) {
   });
 }
 
-// 컬럼 헤더 감지
-function detectCols(row) {
-  const m = {};
-  row.forEach((c, i) => {
-    const s = String(c).trim();
-    if (s.includes('담당자'))                       m.person    = i;
-    else if (s.includes('진행구분'))                m.category  = i;
-    else if (s.includes('도면'))                    m.drawing   = i;
-    else if (s.includes('프로젝트명') || s === '건명') m.project  = i;
-    else if (s.includes('진행상황') || s.includes('진행 상황')) m.progress = i;
-    else if (s === '금액' || s.includes('금액'))    m.amount    = i;
-    else if (s.includes('실행일정') || s.includes('일정')) m.schedule = i;
-    else if (s.includes('인테리어') || s.includes('협력')) m.partner  = i;
-    else if (s === '비고')                          m.notes     = i;
-  });
-  return m;
-}
-
 // 카테고리 / 도면상태 정규화
 const VALID_CATS  = ['실행','제안','신규','도면','제작','테스트','개발','기술지원','기타'];
 const VALID_DRAWS = ['작성필요','작성중','검토중','완료'];
-const mapCat  = s => VALID_CATS.includes(s.trim())  ? s.trim() : '기타';
-const mapDraw = s => { const t=s.trim(); return VALID_DRAWS.includes(t) ? t : '—'; };
+const mapCat  = s => VALID_CATS.includes(s.trim()) ? s.trim() : (s.trim() ? '기타' : '실행');
+const mapDraw = s => { const t = s.trim(); return VALID_DRAWS.includes(t) ? t : '—'; };
 
-// 금액 파싱 (억/천/만/숫자)
-function parseAmt(s) {
-  if (!s) return '';
-  s = String(s).trim().replace(/,/g,'').replace(/원/g,'');
-  const 억 = s.match(/([\d.]+)\s*억/);
-  const 만 = s.match(/([\d.]+)\s*만/);
-  const 천 = s.match(/([\d.]+)\s*천/);
-  if (억) return Math.round(parseFloat(억[1]) * 1e8);
-  if (만) return Math.round(parseFloat(만[1]) * 1e4);
-  if (천) return Math.round(parseFloat(천[1]) * 1e3);
+// 금액 파싱: 억/만/천 단위 지원
+function parseAmt(v) {
+  if (v === '' || v == null) return '';
+  if (typeof v === 'number') return Math.round(v);
+  const s = String(v).trim().replace(/,/g,'').replace(/원/g,'').replace(/\s/g,'');
+  const m억 = s.match(/([\d.]+)억/);
+  const m만 = s.match(/([\d.]+)만/);
+  const m천 = s.match(/([\d.]+)천/);
+  if (m억) return Math.round(parseFloat(m억[1]) * 1e8);
+  if (m만) return Math.round(parseFloat(m만[1]) * 1e4);
+  if (m천) return Math.round(parseFloat(m천[1]) * 1e3);
   const n = parseFloat(s);
   return isNaN(n) ? '' : Math.round(n);
 }
 
-// Excel 전체 파싱
+// 주차 타이틀 행 판별 ("주차" + "진행사항" 포함)
+function isWeekTitle(row) {
+  const joined = row.map(c => String(c)).join('');
+  return joined.includes('주차') && (joined.includes('진행사항') || joined.includes('프로젝트'));
+}
+
+// 헤더 행 판별 (건너뜀)
+function isHeaderRow(row) {
+  const p = String(row[XL_COLS.project] || '').trim();
+  const n = String(row[XL_COLS.person]  || '').trim();
+  return p === '프로젝트명' || p === '건명' || n === '담당자';
+}
+
+// 유효한 데이터 행인지
+function isDataRow(row) {
+  const project = String(row[XL_COLS.project] || '').trim();
+  if (!project) return false;
+  // 소계/합계 행 제외
+  if (['프로젝트명','건명','소계','합계','담당자'].includes(project)) return false;
+  return true;
+}
+
+// Excel 전체 파싱 (고정 컬럼 위치 사용)
 function parseExcel(rows) {
   const result = {}; // { personName: tasks[] }
+  let inSection = false;
+  let lastPerson = '';
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    // 헤더 행 감지: '프로젝트명' 포함
-    if (!row.some(c => String(c).includes('프로젝트명') || c === '건명')) continue;
-    const cols = detectCols(row);
-    if (cols.project == null) continue;
 
-    // 헤더 다음 행부터 데이터 파싱
-    i++;
-    let lastPerson = '';
-    while (i < rows.length) {
-      const dr = rows[i];
-      // 다음 헤더 or 주차 타이틀 만나면 중단
-      if (dr.some(c => String(c).includes('프로젝트명') || String(c).includes('주차'))) { i--; break; }
+    if (isWeekTitle(row))  { inSection = true; lastPerson = ''; continue; }
+    if (isHeaderRow(row))  { continue; }
+    if (!inSection)        { continue; }
 
-      const person  = String(dr[cols.person]  || '').trim();
-      const project = String(dr[cols.project] || '').trim();
-      if (person) lastPerson = person;
-      if (!project || !lastPerson) { i++; continue; }
+    const personCell  = String(row[XL_COLS.person]   || '').trim();
+    const projectCell = String(row[XL_COLS.project]  || '').trim();
 
-      const task = {
-        projectName:   project,
-        category:      mapCat(String(dr[cols.category] || '')),
-        drawingStatus: mapDraw(String(dr[cols.drawing] || '')),
-        progress:      String(dr[cols.progress] || '').trim(),
-        amount:        parseAmt(dr[cols.amount]),
-        schedule:      String(dr[cols.schedule] || '').trim(),
-        partner:       String(dr[cols.partner]  || '').trim(),
-        notes:         String(dr[cols.notes]    || '').trim(),
-      };
+    // 담당자 갱신 (비어있지 않고 카테고리 값이 아닌 경우)
+    if (personCell && !VALID_CATS.includes(personCell)) lastPerson = personCell;
+    if (!isDataRow(row) || !lastPerson) continue;
 
-      if (!result[lastPerson]) result[lastPerson] = [];
-      // 중복 방지: 같은 프로젝트명이 이미 있으면 스킵
-      if (!result[lastPerson].some(t => t.projectName === task.projectName)) {
-        result[lastPerson].push(task);
-      }
-      i++;
+    const task = {
+      projectName:   projectCell,
+      category:      mapCat(String(row[XL_COLS.category] || '')),
+      drawingStatus: mapDraw(String(row[XL_COLS.drawing]  || '')),
+      progress:      String(row[XL_COLS.progress] || '').trim(),
+      amount:        parseAmt(row[XL_COLS.amount]),
+      schedule:      String(row[XL_COLS.schedule] || '').trim(),
+      partner:       String(row[XL_COLS.partner]  || '').trim(),
+      notes:         String(row[XL_COLS.notes]    || '').trim(),
+    };
+
+    if (!result[lastPerson]) result[lastPerson] = [];
+    // 같은 프로젝트명 중복 스킵
+    if (!result[lastPerson].some(t => t.projectName === task.projectName)) {
+      result[lastPerson].push(task);
     }
   }
 
   return Object.entries(result).map(([name, tasks]) => ({ name, tasks }));
 }
 
-// 미리보기 렌더
+// ── 미리보기 렌더 ─────────────────────────────────────────────
 function renderImport() {
-  if (!xlParsed.length) { alert('인식된 업무 데이터가 없습니다.'); return; }
+  if (!xlParsed.length) {
+    alert('인식된 업무 데이터가 없습니다.\n파일 형식을 확인해 주세요.');
+    return;
+  }
 
   const totalTasks = xlParsed.reduce((s, g) => s + g.tasks.length, 0);
   const userOpts = Object.entries(allUsers)
@@ -738,58 +748,117 @@ function renderImport() {
 
   $('xlBody').innerHTML = `
     <div class="xl-info">
-      총 <strong>${xlParsed.length}명</strong>, <strong>${totalTasks}건</strong> 인식됨.
-      담당자 이름이 자동 매칭됩니다. 매칭이 안 된 경우 직접 선택해 주세요.
+      <strong>${xlParsed.length}명</strong> · <strong>${totalTasks}건</strong> 인식됨 &nbsp;|&nbsp;
+      담당자명이 보드 사용자와 자동 매칭됩니다. 체크박스로 항목을 선택/제외하세요.
     </div>
     ${xlParsed.map((g, gi) => {
       const autoId = Object.entries(allUsers).find(([,u]) => u.name === g.name)?.[0] || '';
+      const matched = !!autoId;
       return `
         <div class="xl-group">
           <div class="xl-group-head">
-            <span class="xl-person">${esc(g.name)}</span>
-            <select class="xl-sel ${autoId?'matched':'unmatched'}" id="xlSel-${gi}">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="xlChkAll-${gi}" checked onchange="toggleGroup(${gi},this.checked)"
+                style="width:14px;height:14px;cursor:pointer">
+              <span class="xl-person">${esc(g.name)}</span>
+            </label>
+            <select class="xl-sel ${matched?'matched':'unmatched'}" id="xlSel-${gi}">
               <option value="">-- 사용자 선택 --</option>
               ${userOpts}
             </select>
-            <span class="xl-count">${g.tasks.length}건</span>
+            ${!matched ? '<span style="font-size:11px;color:#e53e3e">⚠ 매칭 필요</span>' : ''}
+            <span class="xl-count" id="xlCnt-${gi}">${g.tasks.length}건 선택</span>
           </div>
-          <div>
-            ${g.tasks.map(t => {
-              const bg = CAT_BG[t.category]||'#f3f4f6', fg = CAT_FG[t.category]||'#374151';
-              const amtStr = t.amount ? Number(t.amount).toLocaleString('ko-KR')+'원' : '';
-              return `<div class="xl-task">
-                <span class="xl-task-cat" style="background:${bg};color:${fg}">${esc(t.category)}</span>
-                <span class="xl-task-name" title="${esc(t.projectName)}">${esc(t.projectName)}</span>
-                <span class="xl-task-prog" title="${esc(t.progress)}">${esc(t.progress.substring(0,40))}${t.progress.length>40?'…':''}</span>
-                ${amtStr ? `<span class="xl-task-amt">${amtStr}</span>` : ''}
-              </div>`;
-            }).join('')}
+          <div class="xl-table-wrap">
+            <table class="xl-table">
+              <thead>
+                <tr>
+                  <th style="width:28px"></th>
+                  <th style="width:68px">진행구분</th>
+                  <th style="min-width:160px">프로젝트명</th>
+                  <th style="min-width:200px">진행상황</th>
+                  <th style="width:70px">도면</th>
+                  <th style="width:100px">금액</th>
+                  <th style="width:80px">일정</th>
+                  <th style="width:80px">협력업체</th>
+                  <th style="width:80px">비고</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${g.tasks.map((t, ti) => {
+                  const bg = CAT_BG[t.category]||'#f3f4f6', fg = CAT_FG[t.category]||'#374151';
+                  const drBg = DRAW_BG[t.drawingStatus]||'#f3f4f6';
+                  const amtStr = t.amount ? Number(t.amount).toLocaleString('ko-KR')+'원' : '';
+                  return `<tr id="xlRow-${gi}-${ti}">
+                    <td style="text-align:center">
+                      <input type="checkbox" class="xl-row-chk" data-gi="${gi}" checked
+                        onchange="toggleRow(${gi},${ti},this.checked)"
+                        style="width:13px;height:13px;cursor:pointer">
+                    </td>
+                    <td><span class="xl-task-cat" style="background:${bg};color:${fg}">${esc(t.category)}</span></td>
+                    <td style="font-weight:500">${esc(t.projectName)}</td>
+                    <td style="color:#555;white-space:pre-wrap;line-height:1.4">${esc(t.progress)}</td>
+                    <td><span style="background:${drBg};padding:1px 6px;border-radius:3px;font-size:11px">${esc(t.drawingStatus)}</span></td>
+                    <td style="white-space:nowrap;color:#444">${amtStr}</td>
+                    <td style="color:#666">${esc(t.schedule)}</td>
+                    <td style="color:#666">${esc(t.partner)}</td>
+                    <td style="color:#666">${esc(t.notes)}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
           </div>
         </div>`;
     }).join('')}`;
 
-  // 자동 매칭 값 설정
+  // 자동 매칭 적용
   xlParsed.forEach((g, gi) => {
-    const autoId = Object.entries(allUsers).find(([,u]) => u.name === g.name)?.[0];
-    if (autoId) $(`xlSel-${gi}`).value = autoId;
+    const id = Object.entries(allUsers).find(([,u]) => u.name === g.name)?.[0];
+    if (id) $(`xlSel-${gi}`).value = id;
   });
 
   show('xlOverlay');
 }
 
+// 그룹 전체 체크/해제
+window.toggleGroup = (gi, checked) => {
+  document.querySelectorAll(`.xl-row-chk[data-gi="${gi}"]`).forEach(cb => cb.checked = checked);
+  updateGroupCount(gi);
+};
+
+// 개별 행 체크/해제
+window.toggleRow = (gi, ti, checked) => {
+  const row = $(`xlRow-${gi}-${ti}`);
+  if (row) row.style.opacity = checked ? '1' : '0.35';
+  updateGroupCount(gi);
+  // 전체 체크박스 상태 갱신
+  const all = [...document.querySelectorAll(`.xl-row-chk[data-gi="${gi}"]`)];
+  $(`xlChkAll-${gi}`).checked = all.every(c => c.checked);
+  $(`xlChkAll-${gi}`).indeterminate = !all.every(c=>c.checked) && all.some(c=>c.checked);
+};
+
+function updateGroupCount(gi) {
+  const checked = [...document.querySelectorAll(`.xl-row-chk[data-gi="${gi}"]`)].filter(c=>c.checked).length;
+  const cnt = $(`xlCnt-${gi}`);
+  if (cnt) cnt.textContent = `${checked}건 선택`;
+}
+
 // 가져오기 실행
 window.confirmImport = async () => {
   const updates = {};
-  let count = 0;
+  let count = 0, skipCount = 0;
 
   xlParsed.forEach((g, gi) => {
     const uid = $(`xlSel-${gi}`)?.value;
-    if (!uid) return;
+    if (!uid) { skipCount += g.tasks.length; return; }
+
+    const checks = [...document.querySelectorAll(`.xl-row-chk[data-gi="${gi}"]`)];
     g.tasks.forEach((t, ti) => {
+      if (!checks[ti]?.checked) return;
       const newRef = push(ref(db, `tasks/${uid}`));
       updates[`tasks/${uid}/${newRef.key}`] = {
         ...t, memo: '',
-        order: Date.now() + ti,
+        order: Date.now() + count,
         updatedBy: currentProfile.name,
         updatedAt: Date.now()
       };
@@ -797,7 +866,8 @@ window.confirmImport = async () => {
     });
   });
 
-  if (!count) { alert('사용자가 선택되지 않은 항목이 있습니다.'); return; }
+  if (!count) { alert('가져올 항목이 없습니다.\n사용자를 선택하고 항목을 체크해 주세요.'); return; }
+  if (skipCount > 0 && !confirm(`사용자가 미선택된 ${skipCount}건은 제외됩니다.\n${count}건을 가져올까요?`)) return;
 
   try {
     await update(ref(db), updates);
