@@ -327,7 +327,7 @@
 </div>
 
 <!-- SheetJS (Excel 파싱) -->
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
 <script type="module">
 import { initializeApp }            from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -612,9 +612,9 @@ function esc(str) {
 }
 
 // ── Excel 가져오기 ────────────────────────────────────────────
-// 스크린샷 분석 기준 고정 컬럼 위치 (0-indexed: A=0, B=1, ...)
+// 스크린샷 기준 기본 컬럼 위치 (자동 감지 실패 시 폴백)
 // B:담당자 C:진행구분 D:도면작성 E:프로젝트명 F:진행상황 G:금액 H:실행일정 I:인테리어 J:비고
-const XL_COLS = { person:1, category:2, drawing:3, project:4, progress:5, amount:6, schedule:7, partner:8, notes:9 };
+const DEFAULT_COLS = { person:1, category:2, drawing:3, project:4, progress:5, amount:6, schedule:7, partner:8, notes:9 };
 
 let xlParsed = []; // [{ name, tasks[] }]
 
@@ -628,13 +628,26 @@ $('excelInput').addEventListener('change', async e => {
   show('loadingScreen');
   try {
     const buf  = await file.arrayBuffer();
-    const wb   = XLSX.read(buf);
+    const wb   = XLSX.read(buf, { type:'array', cellStyles:false });
     const ws   = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+    const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
+    console.log('[XL] 총 행 수:', rows.length, '| 병합 수:', (ws['!merges']||[]).length, '| 범위:', ws['!ref']);
     expandMerges(ws, rows);
-    xlParsed = parseExcel(rows);
-    renderImport();
+    // 처음 3개 비어있지 않은 행 디버그 출력
+    let shown = 0;
+    for (let i = 0; i < rows.length && shown < 3; i++) {
+      if (rows[i].some(c => String(c).trim())) { console.log(`[XL] row[${i}]:`, rows[i].slice(0,12)); shown++; }
+    }
+    const { parsed, debug } = parseExcel(rows);
+    xlParsed = parsed;
+    console.log('[XL] 파싱 결과:', debug);
+    if (!xlParsed.length) {
+      renderImportError(debug);
+    } else {
+      renderImport();
+    }
   } catch(err) {
+    console.error('[XL] 오류:', err);
     alert('파일 읽기 실패: ' + err.message);
   }
   hide('loadingScreen');
@@ -671,76 +684,136 @@ function parseAmt(v) {
   return isNaN(n) ? '' : Math.round(n);
 }
 
-// 주차 타이틀 행 판별 ("주차" + "진행사항" 포함)
+// 주차 타이틀 행 판별 ("주차" 포함)
 function isWeekTitle(row) {
-  const joined = row.map(c => String(c)).join('');
-  return joined.includes('주차') && (joined.includes('진행사항') || joined.includes('프로젝트'));
+  return row.map(c => String(c)).join('').includes('주차');
 }
 
-// 헤더 행 판별 (건너뜀)
-function isHeaderRow(row) {
-  const p = String(row[XL_COLS.project] || '').trim();
-  const n = String(row[XL_COLS.person]  || '').trim();
-  return p === '프로젝트명' || p === '건명' || n === '담당자';
+// 헤더 행에서 컬럼 위치 자동 감지 (담당자+프로젝트명 둘 다 있어야 성공)
+function detectCols(row) {
+  const MAP = {
+    person:   ['담당자'],
+    category: ['진행구분','구분'],
+    drawing:  ['도면작성','도면'],
+    project:  ['프로젝트명','건명'],
+    progress: ['진행상황','진행내용'],
+    amount:   ['금액'],
+    schedule: ['실행일정','일정'],
+    partner:  ['인테리어','협력업체','협력'],
+    notes:    ['비고','메모'],
+  };
+  const found = {};
+  row.forEach((cell, ci) => {
+    const txt = String(cell).trim();
+    for (const [key, aliases] of Object.entries(MAP)) {
+      if (aliases.some(a => txt.includes(a))) { found[key] = ci; break; }
+    }
+  });
+  return (found.person !== undefined && found.project !== undefined) ? found : null;
 }
 
-// 유효한 데이터 행인지
-function isDataRow(row) {
-  const project = String(row[XL_COLS.project] || '').trim();
+// 유효한 데이터 행인지 (cols 파라미터)
+function isDataRow(row, cols) {
+  const project = String(row[cols.project] || '').trim();
   if (!project) return false;
-  // 소계/합계 행 제외
   if (['프로젝트명','건명','소계','합계','담당자'].includes(project)) return false;
   return true;
 }
 
-// Excel 전체 파싱 (고정 컬럼 위치 사용)
+// Excel 전체 파싱 — 하이브리드 방식
+// 1) 헤더 행 자동 감지 → 컬럼 위치 확정
+// 2) "주차" 타이틀 OR 진행구분+프로젝트 조합 데이터 행으로 섹션 시작
+// Returns { parsed: [{name, tasks[]}], debug: {...} }
 function parseExcel(rows) {
-  const result = {}; // { personName: tasks[] }
+  let cols = null;
+  const result = {};
   let inSection = false;
   let lastPerson = '';
+  let weekTitles = 0, dataRows = 0, headerFound = false;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
+    if (!row.some(c => String(c).trim())) continue; // 완전 빈 행 스킵
 
-    if (isWeekTitle(row))  { inSection = true; lastPerson = ''; continue; }
-    if (isHeaderRow(row))  { continue; }
-    if (!inSection)        { continue; }
+    // 주차 타이틀 → 섹션 시작
+    if (isWeekTitle(row)) {
+      weekTitles++;
+      inSection = true;
+      lastPerson = '';
+      continue;
+    }
 
-    const personCell  = String(row[XL_COLS.person]   || '').trim();
-    const projectCell = String(row[XL_COLS.project]  || '').trim();
+    // 헤더 행 자동 감지 → 컬럼 확정 후 섹션 시작
+    const detected = detectCols(row);
+    if (detected) {
+      cols = detected;
+      headerFound = true;
+      inSection = true;
+      lastPerson = '';
+      console.log('[XL] 헤더 감지됨 row[' + i + ']:', detected);
+      continue;
+    }
 
-    // 담당자 갱신 (비어있지 않고 카테고리 값이 아닌 경우)
+    // 아직 cols 없으면 기본값 사용
+    if (!cols) cols = DEFAULT_COLS;
+
+    // 섹션 진입 전이면: 진행구분+프로젝트 조합으로 섹션 시작 판단
+    if (!inSection) {
+      const catVal  = String(row[cols.category] || '').trim();
+      const projVal = String(row[cols.project]  || '').trim();
+      if (VALID_CATS.includes(catVal) && projVal) inSection = true;
+      else continue;
+    }
+
+    const personCell  = String(row[cols.person]   || '').trim();
+    const projectCell = String(row[cols.project]  || '').trim();
+
+    // 담당자 갱신 (값이 있고 카테고리 값이 아닌 경우)
     if (personCell && !VALID_CATS.includes(personCell)) lastPerson = personCell;
-    if (!isDataRow(row) || !lastPerson) continue;
+    if (!isDataRow(row, cols) || !lastPerson) continue;
 
+    dataRows++;
     const task = {
       projectName:   projectCell,
-      category:      mapCat(String(row[XL_COLS.category] || '')),
-      drawingStatus: mapDraw(String(row[XL_COLS.drawing]  || '')),
-      progress:      String(row[XL_COLS.progress] || '').trim(),
-      amount:        parseAmt(row[XL_COLS.amount]),
-      schedule:      String(row[XL_COLS.schedule] || '').trim(),
-      partner:       String(row[XL_COLS.partner]  || '').trim(),
-      notes:         String(row[XL_COLS.notes]    || '').trim(),
+      category:      mapCat(String(row[cols.category] || '')),
+      drawingStatus: mapDraw(String(row[cols.drawing]  || '')),
+      progress:      String(row[cols.progress] || '').trim(),
+      amount:        parseAmt(row[cols.amount]),
+      schedule:      String(row[cols.schedule] || '').trim(),
+      partner:       String(row[cols.partner]  || '').trim(),
+      notes:         String(row[cols.notes]    || '').trim(),
     };
 
     if (!result[lastPerson]) result[lastPerson] = [];
-    // 같은 프로젝트명 중복 스킵
     if (!result[lastPerson].some(t => t.projectName === task.projectName)) {
       result[lastPerson].push(task);
     }
   }
 
-  return Object.entries(result).map(([name, tasks]) => ({ name, tasks }));
+  const parsed = Object.entries(result).map(([name, tasks]) => ({ name, tasks }));
+  const debug  = { totalRows: rows.length, weekTitles, dataRows, headerFound,
+                   colsUsed: cols || DEFAULT_COLS, persons: Object.keys(result) };
+  return { parsed, debug };
+}
+
+// 파싱 실패 시 에러 패널 표시
+function renderImportError(debug) {
+  $('xlBody').innerHTML = `
+    <div style="padding:28px 22px">
+      <div style="font-size:15px;font-weight:700;color:#c53030;margin-bottom:14px">⚠ 인식된 업무 데이터가 없습니다.</div>
+      <div style="font-size:12px;color:#666;line-height:2">
+        <div>· 총 행 수: <b>${debug.totalRows}</b></div>
+        <div>· 주차 타이틀 감지: <b>${debug.weekTitles}개</b></div>
+        <div>· 헤더 행(담당자/프로젝트명): <b>${debug.headerFound ? '감지 성공' : '없음 → 기본 컬럼 위치 사용'}</b></div>
+        <div>· 데이터 행: <b>${debug.dataRows}건</b></div>
+        <div style="margin-top:10px;color:#888">파일 형식을 확인하거나 개발자 콘솔(F12)의 [XL] 로그를 확인해 주세요.</div>
+      </div>
+    </div>`;
+  show('xlOverlay');
 }
 
 // ── 미리보기 렌더 ─────────────────────────────────────────────
 function renderImport() {
-  if (!xlParsed.length) {
-    alert('인식된 업무 데이터가 없습니다.\n파일 형식을 확인해 주세요.');
-    return;
-  }
-
   const totalTasks = xlParsed.reduce((s, g) => s + g.tasks.length, 0);
   const userOpts = Object.entries(allUsers)
     .sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''))
