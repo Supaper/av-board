@@ -181,7 +181,7 @@
     .drag-handle:active { cursor: grabbing; }
 
     /* ── 릴리즈노트 스타일 보드 ── */
-    #board { padding: 20px clamp(20px, 3vw, 64px); }
+    #board { padding: 20px clamp(20px, 3vw, 48px); max-width: 1600px; margin: 0 auto; }
 
     /* 유저 헤더 */
     .rn-person-head { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
@@ -403,22 +403,17 @@
     }
 
     /* ── 대시보드 개선 ── */
-    .stat-grid-7 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:10px; }
-    .stat-grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:22px; }
+    .stat-all { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:22px; }
 
     /* ── 반응형 ── */
-    @media (min-width: 1280px) {
-      .stat-grid-7 { grid-template-columns: repeat(7,1fr); }
+    @media (min-width: 1100px) {
+      .stat-all { grid-template-columns: repeat(7,1fr); }
     }
-    @media (min-width: 1440px) {
-      .stat-grid   { grid-template-columns: repeat(4,1fr); }
+    @media (min-width: 1200px) {
       .dash-charts { grid-template-columns: 2fr 1fr; }
-      .dash-people { grid-template-columns: repeat(auto-fill, minmax(300px,1fr)); }
     }
-    @media (max-width: 767px) {
-      .stat-grid   { grid-template-columns: repeat(2,1fr); }
-      .stat-grid-7 { grid-template-columns: repeat(2,1fr); }
-      .stat-grid-3 { grid-template-columns: repeat(2,1fr); }
+    @media (max-width: 599px) {
+      .stat-all    { grid-template-columns: repeat(2,1fr); }
       .dash-charts { grid-template-columns: 1fr; }
       .dash-people { grid-template-columns: 1fr; }
     }
@@ -1272,7 +1267,7 @@ function renderDashboard() {
     </div>
 
     <!-- 2026 연간 통계 -->
-    <div class="stat-grid-7">
+    <div class="stat-all">
       <div class="stat-card-sm" onclick="openStatPopup('total')">
         <div class="stat-label-sm">총 프로젝트</div>
         <div class="stat-value-sm">${projNames.size}</div>
@@ -1280,7 +1275,7 @@ function renderDashboard() {
       </div>
       <div class="stat-card-sm" onclick="openStatPopup('amount')">
         <div class="stat-label-sm">총 금액</div>
-        <div class="stat-value-sm" style="font-size:18px">${fmtAmt(totalAmt)}</div>
+        <div class="stat-value-sm">${fmtAmt(totalAmt)}</div>
         <div class="stat-sub-sm">원 · 클릭해서 보기</div>
       </div>
       <div class="stat-card-sm" onclick="openStatPopup('prop')">
@@ -1293,8 +1288,6 @@ function renderDashboard() {
         <div class="stat-value-sm" style="color:#1d4ed8">${cntProg}</div>
         <div class="stat-sub-sm">건 · 클릭해서 보기</div>
       </div>
-    </div>
-    <div class="stat-grid-3">
       <div class="stat-card-sm" onclick="openStatPopup('draw')">
         <div class="stat-label-sm">도면</div>
         <div class="stat-value-sm" style="color:#5b21b6">${cntDraw}</div>
@@ -1308,7 +1301,7 @@ function renderDashboard() {
       <div class="stat-card-sm" onclick="openStatPopup('tech')">
         <div class="stat-label-sm">기술지원</div>
         <div class="stat-value-sm" style="color:#0369a1">${cntTech}</div>
-        <div class="stat-sub-sm">건 (테스트 포함) · 클릭해서 보기</div>
+        <div class="stat-sub-sm">건 · 클릭해서 보기</div>
       </div>
     </div>
 
