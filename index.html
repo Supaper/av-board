@@ -638,8 +638,8 @@
 
 <script type="module">
 import { initializeApp }            from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithRedirect,
-         getRedirectResult, onAuthStateChanged, signOut }
+import { getAuth, GoogleAuthProvider, signInWithPopup,
+         onAuthStateChanged, signOut }
                                      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getDatabase, ref, onValue, push, set, update, remove,
          query, orderByChild, equalTo, get }
@@ -673,7 +673,10 @@ const show = id => $(id).classList.remove('hidden');
 const hide = id => $(id).classList.add('hidden');
 
 // ── 인증 ────────────────────────────────────────────────────
-window.signInWithGoogle = () => signInWithRedirect(auth, new GoogleAuthProvider());
+window.signInWithGoogle = () => signInWithPopup(auth, new GoogleAuthProvider()).catch(e => {
+  console.error('로그인 실패:', e);
+  alert('로그인 실패: ' + e.message);
+});
 window.doSignOut = () => signOut(auth).then(() => { hide('app'); hide('accessDenied'); show('loginScreen'); });
 
 async function handleUser(user) {
@@ -696,7 +699,6 @@ async function handleUser(user) {
 }
 
 // 리다이렉트 결과 처리 후 일반 상태 감지
-getRedirectResult(auth).catch(() => {});
 onAuthStateChanged(auth, handleUser);
 
 // ── 리얼타임 리스너 ──────────────────────────────────────────
