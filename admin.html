@@ -102,7 +102,7 @@
     <div class="header-title">관리자 페이지</div>
     <div class="header-right">
       <a href="index.html" class="btn-ghost">← 보드로 돌아가기</a>
-      <button class="btn-ghost" onclick="firebase.auth().signOut().then(()=>location.href='index.html')">로그아웃</button>
+      <button class="btn-ghost" onclick="doSignOut()">로그아웃</button>
     </div>
   </div>
 
@@ -154,12 +154,14 @@
   </div>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script type="module">
+import { initializeApp }       from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getAuth, onAuthStateChanged, signOut }
+                                from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getDatabase, ref, onValue, push, set, update, remove, get, query, orderByChild, equalTo }
+                                from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 
-<script>
-const firebaseConfig = {
+const app  = initializeApp({
   apiKey: "AIzaSyDkXa53xtOZIJtfQuS24eEQjgq4J2czZOA",
   authDomain: "av-board-8e12f.firebaseapp.com",
   databaseURL: "https://av-board-8e12f-default-rtdb.asia-southeast1.firebasedatabase.app",
@@ -167,37 +169,36 @@ const firebaseConfig = {
   storageBucket: "av-board-8e12f.firebasestorage.app",
   messagingSenderId: "962231746635",
   appId: "1:962231746635:web:22500e6d2d2cd548880dce"
-};
-firebase.initializeApp(firebaseConfig);
-const db   = firebase.database();
-const auth = firebase.auth();
+});
+const auth = getAuth(app);
+const db   = getDatabase(app);
 
 const $ = id => document.getElementById(id);
 let editingKey = null;
 
-// 인증 가드 — 로그인 안 됐으면 메인으로
-auth.onAuthStateChanged(async user => {
+window.doSignOut = () => signOut(auth).then(() => location.href = 'index.html');
+window.openModal = openModal;
+window.closeModal = closeModal;
+window.saveUser = saveUser;
+window.deleteUser = deleteUser;
+
+// 인증 가드
+onAuthStateChanged(auth, async user => {
   if (!user) { location.href = 'index.html'; return; }
-
-  // 화이트리스트 확인
-  const snap = await db.ref('users').orderByChild('email').equalTo(user.email).once('value');
-  if (!snap.exists()) { location.href = 'index.html'; return; }
-
-  $('guard').classList.add('hidden');
-  $('mainWrap').classList.remove('hidden');
+  try {
+    const snap = await get(query(ref(db,'users'), orderByChild('email'), equalTo(user.email)));
+    if (!snap.exists()) { location.href = 'index.html'; return; }
+    $('guard').classList.add('hidden');
+    $('mainWrap').classList.remove('hidden');
+  } catch(e) { location.href = 'index.html'; }
 });
 
 // 사용자 목록 실시간 반영
-db.ref('users').on('value', snap => {
+onValue(ref(db,'users'), snap => {
   const users = snap.val() || {};
-  const entries = Object.entries(users).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
-
-  if (!entries.length) {
-    $('userList').innerHTML = '<div class="empty-state">등록된 사용자가 없습니다.</div>';
-    return;
-  }
-
-  $('userList').innerHTML = entries.map(([key, u]) => `
+  const entries = Object.entries(users).sort((a,b)=>(a[1].name||'').localeCompare(b[1].name||''));
+  if (!entries.length) { $('userList').innerHTML='<div class="empty-state">등록된 사용자가 없습니다.</div>'; return; }
+  $('userList').innerHTML = entries.map(([key,u]) => `
     <div class="user-row">
       <div class="color-dot" style="background:${u.color||'#999'}"></div>
       <div class="user-info">
@@ -209,70 +210,45 @@ db.ref('users').on('value', snap => {
         <button class="btn btn-sm btn-edit" onclick="openModal('${key}')">수정</button>
         <button class="btn btn-sm btn-del" onclick="deleteUser('${key}','${esc(u.name||'')}')">삭제</button>
       </div>
-    </div>
-  `).join('');
+    </div>`).join('');
 });
 
-// 모달
 function openModal(key = null) {
   editingKey = key;
   $('modalTitle').textContent = key ? '사용자 수정' : '사용자 추가';
-
   if (key) {
-    db.ref(`users/${key}`).once('value').then(snap => {
+    get(ref(db,`users/${key}`)).then(snap => {
       const u = snap.val() || {};
-      $('fEmail').value = u.email || '';
-      $('fName').value  = u.name  || '';
-      $('fTitle').value = u.title || '';
-      $('fDept').value  = u.department || '';
-      $('fColor').value = u.color || '#3b82f6';
+      $('fEmail').value=$('fName').value=$('fTitle').value=$('fDept').value='';
+      $('fEmail').value=u.email||''; $('fName').value=u.name||'';
+      $('fTitle').value=u.title||''; $('fDept').value=u.department||'';
+      $('fColor').value=u.color||'#3b82f6';
     });
   } else {
-    $('fEmail').value = '';
-    $('fName').value  = '';
-    $('fTitle').value = '';
-    $('fDept').value  = '';
-    $('fColor').value = '#3b82f6';
+    $('fEmail').value=$('fName').value=$('fTitle').value=$('fDept').value='';
+    $('fColor').value='#3b82f6';
   }
-
   $('overlay').classList.remove('hidden');
-  setTimeout(() => $('fEmail').focus(), 100);
+  setTimeout(()=>$('fEmail').focus(),100);
 }
 
-function closeModal() {
-  $('overlay').classList.add('hidden');
-  editingKey = null;
-}
+function closeModal() { $('overlay').classList.add('hidden'); editingKey=null; }
 
 function saveUser() {
-  const email = $('fEmail').value.trim();
-  const name  = $('fName').value.trim();
-  if (!email || !name) { alert('이메일과 이름은 필수입니다.'); return; }
-
-  const data = {
-    email,
-    name,
-    title:      $('fTitle').value.trim(),
-    department: $('fDept').value.trim(),
-    color:      $('fColor').value
-  };
-
-  const ref = editingKey
-    ? db.ref(`users/${editingKey}`)
-    : db.ref('users').push();
-
-  ref.set(data).then(closeModal).catch(err => alert('저장 실패: ' + err.message));
+  const email=$('fEmail').value.trim(), name=$('fName').value.trim();
+  if (!email||!name) { alert('이메일과 이름은 필수입니다.'); return; }
+  const data = { email, name, title:$('fTitle').value.trim(), department:$('fDept').value.trim(), color:$('fColor').value };
+  const dbRef = editingKey ? ref(db,`users/${editingKey}`) : push(ref(db,'users'));
+  set(dbRef, data).then(closeModal).catch(err=>alert('저장 실패: '+err.message));
 }
 
 function deleteUser(key, name) {
-  if (!confirm(`"${name}" 사용자를 삭제할까요?\n해당 사용자의 업무 데이터도 함께 삭제됩니다.`)) return;
-  db.ref(`users/${key}`).remove();
-  db.ref(`tasks/${key}`).remove();
+  if (!confirm(`"${name}" 사용자를 삭제할까요?\n업무 데이터도 함께 삭제됩니다.`)) return;
+  remove(ref(db,`users/${key}`)); remove(ref(db,`tasks/${key}`));
 }
 
 function esc(str) {
-  return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
