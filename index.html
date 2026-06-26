@@ -441,6 +441,28 @@
     .proj-entry-chips { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
     .entry-del { background:none; border:none; color:#ddd; cursor:pointer; font-size:16px; padding:0 2px; flex-shrink:0; line-height:1; }
     .entry-del:hover { color:#e53e3e; }
+    .entry-edit { background:none; border:none; color:#ccc; cursor:pointer; font-size:13px; padding:0 2px; flex-shrink:0; line-height:1; }
+    .entry-edit:hover { color:#4285f4; }
+
+    /* 프로젝트/업무 수정 모달 */
+    .edit-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index:400; }
+    .pe-box { background:white; border-radius:12px; width:min(640px,94vw); max-height:86vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.25); }
+    .pe-title { font-size:14px; font-weight:700; padding:16px 20px 14px; border-bottom:1px solid #f0f0f0; flex-shrink:0; }
+    .pe-body { overflow-y:auto; flex:1; padding:12px 20px; }
+    .pe-foot { padding:12px 20px; border-top:1px solid #f0f0f0; display:flex; gap:8px; justify-content:flex-end; flex-shrink:0; }
+    .pe-foot button { padding:8px 20px; border:none; border-radius:6px; font-family:inherit; font-size:12px; cursor:pointer; }
+    .pe-foot .btn-save { background:#1a1a2e; color:white; }
+    .pe-foot .btn-cancel { background:#f5f5f5; color:#555; }
+    .pe-field-row { display:flex; align-items:center; gap:8px; margin-bottom:7px; font-size:12px; }
+    .pe-field-row label { width:70px; color:#888; flex-shrink:0; }
+    .pe-field-row input, .pe-field-row select { flex:1; padding:5px 8px; border:1px solid #e0e0e0; border-radius:5px; font-family:inherit; font-size:12px; }
+    .pe-field-row input:focus, .pe-field-row select:focus { outline:none; border-color:#4285f4; }
+    .pe-entry-section { padding:10px 0; border-bottom:1px solid #f0f0f0; }
+    .pe-entry-section:last-child { border-bottom:none; }
+    .pe-entry-date { font-size:10px; color:#aaa; margin-bottom:6px; }
+    .pe-proj-name-row { display:flex; align-items:center; gap:8px; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid #f0f0f0; font-size:12px; }
+    .pe-proj-name-row label { width:70px; color:#555; font-weight:600; flex-shrink:0; }
+    .pe-proj-name-row input { flex:1; padding:6px 10px; border:1.5px solid #4285f4; border-radius:6px; font-family:inherit; font-size:13px; font-weight:600; }
 
     /* 공통 */
     .empty-state { text-align:center; padding:40px; color:#bbb; font-size:13px; }
@@ -572,6 +594,30 @@
   </div>
 </div>
 
+<!-- 프로젝트 수정 모달 -->
+<div id="projEditModal" class="edit-modal-overlay hidden" onclick="if(event.target===this)closeProjEdit()">
+  <div class="pe-box">
+    <div class="pe-title">프로젝트 수정</div>
+    <div class="pe-body" id="peBody"></div>
+    <div class="pe-foot">
+      <button class="btn-cancel" onclick="closeProjEdit()">취소</button>
+      <button class="btn-save" onclick="saveProjEdit()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 개별 업무 수정 모달 -->
+<div id="entryEditModal" class="edit-modal-overlay hidden" onclick="if(event.target===this)closeEntryEdit()">
+  <div class="pe-box">
+    <div class="pe-title">업무 수정</div>
+    <div class="pe-body" id="eeBody"></div>
+    <div class="pe-foot">
+      <button class="btn-cancel" onclick="closeEntryEdit()">취소</button>
+      <button class="btn-save" onclick="saveEntryEdit()">저장</button>
+    </div>
+  </div>
+</div>
+
 <!-- Excel 가져오기 모달 -->
 <div id="xlOverlay" class="xl-overlay hidden">
   <div class="xl-modal">
@@ -618,6 +664,7 @@ let allUsers = {};
 let allTasks = {};
 let allSites = {};
 let activeTab = null;
+let siteAdminOpen = false;
 const openedArchived = new Set(); // 이전 프로젝트 섹션 열린 uid
 
 // ── 화면 전환 ────────────────────────────────────────────────
@@ -889,7 +936,8 @@ function renderProjTimelineCard(uid, proj, isOwn, archived) {
         ${isOwn ? `<div class="proj-actions">
           ${archived
             ? `<button class="btn-unarch-p" onclick="unarchiveProject('${uid}','${tid0}')">복원</button>`
-            : `<button class="btn-arch-p" onclick="archiveProject('${uid}','${tid0}')">이전으로</button>`}
+            : `<button class="btn-arch-p" onclick="archiveProject('${uid}','${tid0}')">완료</button>
+               <button class="btn-edit-p" onclick="openProjEdit('${uid}','${tid0}')">수정</button>`}
         </div>` : ''}
       </div>
       <div class="proj-timeline">
@@ -911,7 +959,7 @@ function renderProjTimelineCard(uid, proj, isOwn, archived) {
                   ${t.notes?`<span class="chip"><span class="chip-lbl">비고</span>${esc(t.notes)}</span>`:''}
                 </div>
               </div>
-              ${isOwn?`<button class="entry-del" onclick="delTask('${uid}','${tid}')" title="삭제">×</button>`:''}
+              ${isOwn?`<button class="entry-edit" onclick="openEntryEdit('${uid}','${tid}')" title="수정">✏</button><button class="entry-del" onclick="delTask('${uid}','${tid}')" title="삭제">×</button>`:''}
             </div>`;
         }).join('')}
       </div>
@@ -984,7 +1032,7 @@ function renderProjCard(uid, projName, tasks, isOwn, archived) {
         ${isOwn ? `<div class="proj-actions">
           ${archived
             ? `<button class="btn-unarch-p" onclick="unarchiveTask('${uid}','${tid0}')">복원</button>`
-            : `<button class="btn-arch-p"   onclick="archiveTask('${uid}','${tid0}')">이전으로</button>`}
+            : `<button class="btn-arch-p"   onclick="archiveTask('${uid}','${tid0}')">완료</button>`}
           <button class="btn-edit-p" onclick="toggleEditP('${uid}','${tid0}')">편집</button>
           <button class="btn-del-p"  onclick="delTask('${uid}','${tid0}')">삭제</button>
         </div>` : ''}
@@ -1082,8 +1130,20 @@ function renderDashboard() {
   const users = Object.entries(allUsers).sort((a,b)=>(a[1].order||999)-(b[1].order||999));
   if (!users.length) return '<div class="empty-state">등록된 사용자가 없습니다.</div>';
 
-  // 전체 집계 (2026 기준 = 현재 전체 데이터)
-  const allTasksList = users.flatMap(([uid]) => sortedTasks(uid).map(([tid,t]) => ({uid,tid,t})));
+  // 프로젝트별 최신 항목만 집계 (중복 제거: 같은 프로젝트의 여러 항목 중 가장 최신만 사용)
+  function latestPerProj(uid) {
+    const map = {};
+    for (const [tid, t] of sortedTasks(uid)) {
+      const pn = t.projectName; if (!pn) continue;
+      const curr = map[pn];
+      const td = taskDate(t) || new Date(0);
+      if (!curr || td.getTime() > (taskDate(curr[1]) || new Date(0)).getTime()) map[pn] = [tid, t];
+    }
+    return Object.values(map);
+  }
+
+  // 전체 집계 — 프로젝트별 최신 항목 기준
+  const allTasksList = users.flatMap(([uid]) => latestPerProj(uid).map(([tid,t]) => ({uid,tid,t})));
   const projNames = new Set(allTasksList.map(({t}) => t.projectName).filter(Boolean));
 
   let totalAmt=0, cntProp=0, cntDone=0, cntProg=0, cntDraw=0, cntMake=0, cntTech=0;
@@ -1099,16 +1159,16 @@ function renderDashboard() {
     else if (cat==='제작') cntMake++;
     else if (cat==='기술지원'||cat==='테스트') cntTech++;
     else cntProg++;
-    // 사업장 매칭
     const site = matchSite(t.projectName||'');
     if (site) siteCount[site.name] = (siteCount[site.name]||0)+1;
   });
 
-  // 이번 주 담당자별 집계 (프로젝트 수 기준)
+  // 담당자별 집계 — 진행중인 전체 프로젝트 수 (보관되지 않은 최신 항목 기준)
   const personData = users.map(([uid,u]) => {
-    const weekTasks = sortedTasks(uid).filter(([,t]) => taskWeekLabel(t) === thisWeek && !isTaskArchived(t));
-    const weekProjs = new Set(weekTasks.map(([,t])=>t.projectName));
-    return { uid, u, tasks:weekTasks, projCount:weekProjs.size };
+    const latest = latestPerProj(uid);
+    const activeProjs = latest.filter(([,t]) => !isTaskArchived(t));
+    const recentTasks = sortedTasks(uid).filter(([,t]) => !isTaskArchived(t));
+    return { uid, u, tasks: recentTasks, projCount: activeProjs.length };
   });
   const maxProj = Math.max(...personData.map(p=>p.projCount), 1);
 
@@ -1172,7 +1232,7 @@ function renderDashboard() {
     <!-- 차트 -->
     <div class="dash-charts">
       <div class="dash-card">
-        <div class="dash-card-title">이번 주 담당자별 프로젝트 수</div>
+        <div class="dash-card-title">담당자별 진행중 프로젝트 수</div>
         ${personData.map(({u,projCount}) => `
           <div class="bar-row">
             <div class="bar-name">${esc(u.name)}</div>
@@ -1222,7 +1282,7 @@ function renderDashboard() {
             <button class="site-del" onclick="delSite('${sid}')">삭제</button>
           </div>`).join('') || '<div style="font-size:11px;color:#ccc;padding:4px 0">등록된 사업장 없음</div>'}
       </div>
-      <div class="site-add-row hidden" id="siteAddRow">
+      <div class="site-add-row${siteAdminOpen?'':' hidden'}" id="siteAddRow">
         <input id="sa-name" placeholder="사업장명 (예: DS평택)" style="flex:1">
         <input id="sa-locs" placeholder="장소/키워드, 쉼표로 구분 (예: 사무3동,사무복합동)" style="flex:2">
         <button class="btn-site-add" onclick="addSite()">등록</button>
@@ -1523,17 +1583,142 @@ window.openStatPopup = (type) => {
 };
 window.closeStatPopup = () => hide('statPopup');
 
+// ── 프로젝트 수정 모달 ────────────────────────────────────────
+let projEditData = null;
+
+window.openProjEdit = (uid, tid0) => {
+  const tasks = allTasks[uid] || {};
+  const t0 = tasks[tid0];
+  if (!t0) return;
+  const projName = t0.projectName;
+  const entries = Object.entries(tasks)
+    .filter(([, t]) => t.projectName === projName)
+    .sort((a, b) => {
+      const da = taskDate(a[1]) || new Date(0);
+      const db2 = taskDate(b[1]) || new Date(0);
+      return db2 - da;
+    });
+  projEditData = { uid, entries };
+
+  const DRAWING_OPTS = ['—', '작성중', '작성완료', '승인완료'];
+  let html = `<div class="pe-proj-name-row">
+    <label>프로젝트명</label>
+    <input id="pe-projName" value="${esc(projName)}">
+  </div>`;
+  for (const [tid, t] of entries) {
+    html += `<div class="pe-entry-section">
+      <div class="pe-entry-date">${taskDateStr(t) || '날짜 없음'}</div>
+      <div class="pe-field-row"><label>날짜</label><input type="date" id="pe-date-${tid}" value="${t.date||''}"></div>
+      <div class="pe-field-row"><label>구분</label>
+        <select id="pe-cat-${tid}">${CATS.map(c=>`<option${t.category===c?' selected':''}>${c}</option>`).join('')}</select>
+      </div>
+      <div class="pe-field-row"><label>도면현황</label>
+        <select id="pe-ds-${tid}">${DRAWING_OPTS.map(s=>`<option${(t.drawingStatus||'—')===s?' selected':''}>${s}</option>`).join('')}</select>
+      </div>
+      <div class="pe-field-row"><label>진행상황</label><input id="pe-prog-${tid}" value="${esc(t.progress||'')}"></div>
+      <div class="pe-field-row"><label>금액</label><input type="number" id="pe-amt-${tid}" value="${t.amount||''}"></div>
+      <div class="pe-field-row"><label>일정</label><input id="pe-sch-${tid}" value="${esc(t.schedule||'')}"></div>
+      <div class="pe-field-row"><label>협력</label><input id="pe-par-${tid}" value="${esc(t.partner||'')}"></div>
+      <div class="pe-field-row"><label>비고</label><input id="pe-notes-${tid}" value="${esc(t.notes||'')}"></div>
+    </div>`;
+  }
+  document.getElementById('peBody').innerHTML = html;
+  show('projEditModal');
+};
+
+window.closeProjEdit = () => { hide('projEditModal'); projEditData = null; };
+
+window.saveProjEdit = async () => {
+  if (!projEditData) return;
+  const { uid, entries } = projEditData;
+  const newProjName = document.getElementById('pe-projName')?.value.trim();
+  if (!newProjName) { alert('프로젝트명을 입력하세요.'); return; }
+  const updates = {};
+  for (const [tid] of entries) {
+    const base = `tasks/${uid}/${tid}`;
+    updates[`${base}/projectName`] = newProjName;
+    updates[`${base}/category`]    = document.getElementById(`pe-cat-${tid}`)?.value || '실행';
+    updates[`${base}/drawingStatus`] = document.getElementById(`pe-ds-${tid}`)?.value || '—';
+    updates[`${base}/progress`]    = document.getElementById(`pe-prog-${tid}`)?.value.trim() || '';
+    const amt = document.getElementById(`pe-amt-${tid}`)?.value;
+    updates[`${base}/amount`]      = amt ? Number(amt) : null;
+    updates[`${base}/schedule`]    = document.getElementById(`pe-sch-${tid}`)?.value.trim() || '';
+    updates[`${base}/partner`]     = document.getElementById(`pe-par-${tid}`)?.value.trim() || '';
+    updates[`${base}/notes`]       = document.getElementById(`pe-notes-${tid}`)?.value.trim() || '';
+    const dateVal = document.getElementById(`pe-date-${tid}`)?.value;
+    if (dateVal) updates[`${base}/date`] = dateVal;
+    updates[`${base}/updatedBy`]   = currentProfile.name;
+    updates[`${base}/updatedAt`]   = Date.now();
+  }
+  await update(ref(db), updates).catch(e => { alert('저장 실패: ' + e.message); throw e; });
+  closeProjEdit();
+};
+
+// ── 개별 업무 수정 모달 ────────────────────────────────────────
+let entryEditData = null;
+
+window.openEntryEdit = (uid, tid) => {
+  const t = allTasks[uid]?.[tid];
+  if (!t) return;
+  entryEditData = { uid, tid };
+  const DRAWING_OPTS = ['—', '작성중', '작성완료', '승인완료'];
+  document.getElementById('eeBody').innerHTML = `
+    <div class="pe-field-row"><label>날짜</label><input type="date" id="ee-date" value="${t.date||''}"></div>
+    <div class="pe-field-row"><label>구분</label>
+      <select id="ee-cat">${CATS.map(c=>`<option${t.category===c?' selected':''}>${c}</option>`).join('')}</select>
+    </div>
+    <div class="pe-field-row"><label>도면현황</label>
+      <select id="ee-ds">${DRAWING_OPTS.map(s=>`<option${(t.drawingStatus||'—')===s?' selected':''}>${s}</option>`).join('')}</select>
+    </div>
+    <div class="pe-field-row"><label>진행상황</label><input id="ee-prog" value="${esc(t.progress||'')}"></div>
+    <div class="pe-field-row"><label>금액</label><input type="number" id="ee-amt" value="${t.amount||''}"></div>
+    <div class="pe-field-row"><label>일정</label><input id="ee-sch" value="${esc(t.schedule||'')}"></div>
+    <div class="pe-field-row"><label>협력</label><input id="ee-par" value="${esc(t.partner||'')}"></div>
+    <div class="pe-field-row"><label>비고</label><input id="ee-notes" value="${esc(t.notes||'')}"></div>`;
+  show('entryEditModal');
+};
+
+window.closeEntryEdit = () => { hide('entryEditModal'); entryEditData = null; };
+
+window.saveEntryEdit = async () => {
+  if (!entryEditData) return;
+  const { uid, tid } = entryEditData;
+  const amt = document.getElementById('ee-amt')?.value;
+  const dateVal = document.getElementById('ee-date')?.value;
+  const up = {
+    category:      document.getElementById('ee-cat')?.value || '실행',
+    drawingStatus: document.getElementById('ee-ds')?.value || '—',
+    progress:      document.getElementById('ee-prog')?.value.trim() || '',
+    schedule:      document.getElementById('ee-sch')?.value.trim() || '',
+    partner:       document.getElementById('ee-par')?.value.trim() || '',
+    notes:         document.getElementById('ee-notes')?.value.trim() || '',
+    updatedBy:     currentProfile.name,
+    updatedAt:     Date.now()
+  };
+  if (amt) up.amount = Number(amt);
+  if (dateVal) up.date = dateVal;
+  await update(ref(db, `tasks/${uid}/${tid}`), up).catch(e => { alert('저장 실패: ' + e.message); throw e; });
+  closeEntryEdit();
+};
+
 // 사업장 관리
 window.toggleSiteAdmin = () => {
-  document.getElementById('siteAddRow')?.classList.toggle('hidden');
+  siteAdminOpen = !siteAdminOpen;
+  const row = document.getElementById('siteAddRow');
+  if (row) row.classList.toggle('hidden', !siteAdminOpen);
 };
 window.addSite = () => {
   const name = document.getElementById('sa-name')?.value.trim();
   const locs = document.getElementById('sa-locs')?.value.trim();
   if (!name) { alert('사업장명을 입력하세요.'); return; }
-  push(ref(db,'sites'), { name, locations: locs || name });
-  document.getElementById('sa-name').value='';
-  document.getElementById('sa-locs').value='';
+  push(ref(db,'sites'), { name, locations: locs || name })
+    .then(() => {
+      const nameEl = document.getElementById('sa-name');
+      const locsEl = document.getElementById('sa-locs');
+      if (nameEl) nameEl.value = '';
+      if (locsEl) locsEl.value = '';
+    })
+    .catch(e => alert('사업장 저장 실패: ' + e.message));
 };
 window.delSite = (sid) => {
   if (!confirm('사업장을 삭제할까요?')) return;
