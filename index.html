@@ -408,7 +408,7 @@
     .popup-proj-row { padding:9px 0; border-bottom:1px solid #f5f5f5; display:flex; align-items:center; gap:8px; font-size:12px; }
     .popup-proj-row:last-child { border-bottom:none; }
     .popup-proj-name { flex:1; color:#333; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .popup-proj-amt { color:#059669; font-size:11px; font-weight:600; white-space:nowrap; flex-shrink:0; }
+    .popup-proj-amt { font-size:11px; font-weight:700; white-space:nowrap; flex-shrink:0; }
     .popup-person-tag { font-size:10px; color:#999; white-space:nowrap; flex-shrink:0; }
     .popup-empty { text-align:center; color:#ccc; padding:30px; font-size:12px; }
 
@@ -784,6 +784,8 @@ const CATS    = ['실행','제안','신규','도면','제작','테스트','개�
 const DRAWS   = ['—','작성필요','작성중','검토중','완료'];
 
 function fmtAmount(v) { return (!v && v!==0) ? '' : Number(v).toLocaleString('ko-KR')+'원'; }
+// 1억 이상: 초록, 미만: 파랑
+function amtColor(v) { return Number(v) >= 1e8 ? '#059669' : '#3b82f6'; }
 function fmtTs(ts) {
   if (!ts) return '';
   const d = new Date(ts);
@@ -1566,8 +1568,8 @@ window.openStatPopup = (type) => {
     html = items.map(p => `
       <div class="popup-proj-row">
         <div class="popup-proj-name">${esc(p.name)}</div>
+        ${p.totalAmt ? `<span class="popup-proj-amt" style="color:${amtColor(p.totalAmt)}">${fmtAmt(p.totalAmt)}</span>` : ''}
         <span class="popup-person-tag">${p.persons.join(', ')}</span>
-        ${p.totalAmt ? `<span class="popup-proj-amt">${fmtAmt(p.totalAmt)}</span>` : ''}
       </div>`).join('') || '<div class="popup-empty">데이터 없음</div>';
 
   } else if (type === 'amount') {
@@ -1578,8 +1580,8 @@ window.openStatPopup = (type) => {
       <div class="popup-proj-row">
         <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};flex-shrink:0;font-size:10px">${esc(t.category||'실행')}</span>
         <div class="popup-proj-name">${esc(t.projectName||'(제목 없음)')}</div>
+        <span class="popup-proj-amt" style="color:${amtColor(t.amount)}">${fmtAmt(t.amount)}</span>
         <span class="popup-person-tag">${esc(u.name)}</span>
-        <span class="popup-proj-amt">${fmtAmt(t.amount)}</span>
       </div>`).join('') || '<div class="popup-empty">데이터 없음</div>';
 
   } else {
@@ -1596,8 +1598,8 @@ window.openStatPopup = (type) => {
       <div class="popup-proj-row">
         <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};flex-shrink:0;font-size:10px">${esc(t.category||'실행')}</span>
         <div class="popup-proj-name">${esc(t.projectName||'(제목 없음)')}</div>
+        ${t.amount ? `<span class="popup-proj-amt" style="color:${amtColor(t.amount)}">${fmtAmt(t.amount)}</span>` : ''}
         <span class="popup-person-tag">${esc(u.name)}</span>
-        ${t.amount ? `<span class="popup-proj-amt">${fmtAmt(t.amount)}</span>` : ''}
       </div>`).join('') || '<div class="popup-empty">해당 없음</div>';
   }
 
@@ -1807,8 +1809,8 @@ window.openSitePopup = (siteName) => {
     <div class="popup-proj-row">
       <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};flex-shrink:0;font-size:10px">${esc(t.category||'실행')}</span>
       <div class="popup-proj-name">${esc(t.projectName||'(제목 없음)')}</div>
+      ${t.amount?`<span class="popup-proj-amt" style="color:${amtColor(t.amount)}">${fmtAmt(t.amount)}</span>`:''}
       <span class="popup-person-tag">${esc(u.name)}</span>
-      ${t.amount?`<span class="popup-proj-amt">${fmtAmt(t.amount)}</span>`:''}
     </div>`).join('') || '<div class="popup-empty">매칭된 프로젝트 없음</div>';
   $('statPopupTitle').textContent = `${siteName} (${matching.length}건)`;
   $('statPopupBody').innerHTML = html;
