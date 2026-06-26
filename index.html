@@ -706,15 +706,27 @@ function startListeners() {
   onValue(ref(db, 'sites'), snap => { allSites = snap.val() || {}; if(activeTab==='all') renderBoard(); });
 }
 
+// 프로젝트별 최신 항목 1개씩 반환 (중복 제거용)
+function latestPerProj(uid) {
+  const map = {};
+  for (const [tid, t] of sortedTasks(uid)) {
+    const pn = t.projectName; if (!pn) continue;
+    const curr = map[pn];
+    const td = taskDate(t) || new Date(0);
+    if (!curr || td.getTime() > (taskDate(curr[1]) || new Date(0)).getTime()) map[pn] = [tid, t];
+  }
+  return Object.values(map);
+}
+
 // ── 탭 ──────────────────────────────────────────────────────
 function renderTabs() {
   const sorted = Object.entries(allUsers).sort((a,b) => (a[1].order||999) - (b[1].order||999));
   $('tabs').innerHTML =
+    `<div class="tab ${activeTab==='all'?'active':''}" onclick="switchTab('all')">📊 DASHBOARD</div>` +
     sorted.map(([uid, u]) =>
       `<div class="tab ${activeTab===uid?'active':''}" onclick="switchTab('${uid}')">
         <span class="tab-dot" style="background:${u.color||'#999'}"></span>${esc(u.name)}
-      </div>`).join('') +
-    `<div class="tab ${activeTab==='all'?'active':''}" onclick="switchTab('all')">📊 DASHBOARD</div>`;
+      </div>`).join('');
 }
 window.switchTab = id => { activeTab = id; renderTabs(); renderBoard(); };
 
@@ -1130,18 +1142,6 @@ function renderDashboard() {
   const users = Object.entries(allUsers).sort((a,b)=>(a[1].order||999)-(b[1].order||999));
   if (!users.length) return '<div class="empty-state">등록된 사용자가 없습니다.</div>';
 
-  // 프로젝트별 최신 항목만 집계 (중복 제거: 같은 프로젝트의 여러 항목 중 가장 최신만 사용)
-  function latestPerProj(uid) {
-    const map = {};
-    for (const [tid, t] of sortedTasks(uid)) {
-      const pn = t.projectName; if (!pn) continue;
-      const curr = map[pn];
-      const td = taskDate(t) || new Date(0);
-      if (!curr || td.getTime() > (taskDate(curr[1]) || new Date(0)).getTime()) map[pn] = [tid, t];
-    }
-    return Object.values(map);
-  }
-
   // 전체 집계 — 프로젝트별 최신 항목 기준
   const allTasksList = users.flatMap(([uid]) => latestPerProj(uid).map(([tid,t]) => ({uid,tid,t})));
   const projNames = new Set(allTasksList.map(({t}) => t.projectName).filter(Boolean));
@@ -1517,8 +1517,9 @@ window.delTask = (uid, tid) => {
 // 통계 팝업
 window.openStatPopup = (type) => {
   const users = Object.entries(allUsers).sort((a,b)=>(a[1].order||999)-(b[1].order||999));
+  // 프로젝트별 최신 항목 1건씩만 사용 (중복 제거)
   const allTasksList = users.flatMap(([uid,u]) =>
-    Object.entries(allTasks[uid]||{}).map(([tid,t]) => ({uid, u, tid, t}))
+    latestPerProj(uid).map(([tid,t]) => ({uid, u, tid, t}))
   );
   const fmtAmt = v => {
     const n = Number(v)||0; if (!n) return '';
