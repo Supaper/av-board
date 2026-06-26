@@ -371,8 +371,9 @@
     .dash-person-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
     .dash-person-name { font-size:13px; font-weight:700; color:#1a1a2e; }
     .dash-person-cnt { font-size:11px; color:#aaa; margin-left:auto; }
-    .dash-task-row { padding:5px 0; border-bottom:1px solid #f5f5f5; display:flex; align-items:flex-start; gap:7px; }
+    .dash-task-row { padding:5px 0; border-bottom:1px solid #f5f5f5; display:flex; align-items:flex-start; gap:7px; cursor:pointer; border-radius:4px; transition:background 0.1s; }
     .dash-task-row:last-child { border-bottom:none; }
+    .dash-task-row:hover { background:#f5f7ff; }
     .dash-task-name { font-size:12px; color:#333; flex:1; }
     .dash-task-prog { font-size:11px; color:#aaa; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; }
 
@@ -420,6 +421,8 @@
     .stat-popup-body { padding:6px 22px 16px; overflow-y:auto; flex:1; }
     .popup-proj-row { padding:9px 0; border-bottom:1px solid #f5f5f5; display:flex; align-items:center; gap:8px; font-size:12px; }
     .popup-proj-row:last-child { border-bottom:none; }
+    .popup-proj-row-link { cursor:pointer; border-radius:5px; padding:9px 6px; transition:background 0.1s; }
+    .popup-proj-row-link:hover { background:#f5f7ff; }
     .popup-proj-name { flex:1; color:#333; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .popup-proj-amt { font-size:11px; font-weight:700; white-space:nowrap; flex-shrink:0; }
     .popup-person-tag { font-size:10px; color:#999; white-space:nowrap; flex-shrink:0; }
@@ -1351,7 +1354,7 @@ function renderDashboard() {
             <div class="dash-person-cnt">${tasks.length}건</div>
           </div>
           ${tasks.length ? tasks.map(([,t])=>`
-            <div class="dash-task-row">
+            <div class="dash-task-row" onclick="openProjHistPopup('${uid}','${(t.projectName||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
               <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};flex-shrink:0">${esc(t.category||'실행')}</span>
               <div style="min-width:0">
                 <div class="dash-task-name">${esc(t.projectName||'(제목 없음)')}</div>
@@ -1596,7 +1599,7 @@ window.openStatPopup = (type) => {
     const items = Object.values(projMap).sort((a,b)=>a.name.localeCompare(b.name,'ko'));
     title = `총 프로젝트 (${items.length}건)`;
     html = items.map(p => `
-      <div class="popup-proj-row">
+      <div class="popup-proj-row popup-proj-row-link" onclick="openProjHistPopup('','${p.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
         <div class="popup-proj-name">${esc(p.name)}</div>
         ${p.totalAmt ? `<span class="popup-proj-amt" style="color:${amtColor(p.totalAmt)}">${fmtAmt(p.totalAmt)}</span>` : ''}
         <span class="popup-person-tag">${p.persons.join(', ')}</span>
@@ -1606,8 +1609,8 @@ window.openStatPopup = (type) => {
     const filtered = allTasksList.filter(({t})=>Number(t.amount)>0)
       .sort((a,b)=>(Number(b.t.amount)||0)-(Number(a.t.amount)||0));
     title = `금액 현황 (${filtered.length}건)`;
-    html = filtered.map(({t,u}) => `
-      <div class="popup-proj-row">
+    html = filtered.map(({uid,t,u}) => `
+      <div class="popup-proj-row popup-proj-row-link" onclick="openProjHistPopup('${uid}','${(t.projectName||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
         <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};flex-shrink:0;font-size:10px">${esc(t.category||'실행')}</span>
         <div class="popup-proj-name">${esc(t.projectName||'(제목 없음)')}</div>
         <span class="popup-proj-amt" style="color:${amtColor(t.amount)}">${fmtAmt(t.amount)}</span>
@@ -1624,8 +1627,8 @@ window.openStatPopup = (type) => {
     };
     const filtered = allTasksList.filter(({t})=>FILTERS[type]?.(t));
     title = `${LABELS[type]||type} (${filtered.length}건)`;
-    html = filtered.map(({t,u}) => `
-      <div class="popup-proj-row">
+    html = filtered.map(({uid,t,u}) => `
+      <div class="popup-proj-row popup-proj-row-link" onclick="openProjHistPopup('${uid}','${(t.projectName||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
         <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};flex-shrink:0;font-size:10px">${esc(t.category||'실행')}</span>
         <div class="popup-proj-name">${esc(t.projectName||'(제목 없음)')}</div>
         ${t.amount ? `<span class="popup-proj-amt" style="color:${amtColor(t.amount)}">${fmtAmt(t.amount)}</span>` : ''}
@@ -1639,30 +1642,49 @@ window.openStatPopup = (type) => {
 };
 window.closeStatPopup = () => hide('statPopup');
 
+let _phpCtx = {uid: '', projName: ''};
+
 window.openProjHistPopup = (uid, projName) => {
-  const all = Object.entries(allTasks[uid] || {})
-    .filter(([,t]) => t.projectName === projName)
-    .sort((a,b) => weekToNum(taskWeekLabel(b[1])) - weekToNum(taskWeekLabel(a[1])));
+  _phpCtx = {uid, projName};
+  let allEntries = [];
+  if (uid) {
+    Object.entries(allTasks[uid] || {})
+      .filter(([,t]) => t.projectName === projName)
+      .forEach(([tid,t]) => allEntries.push({tid, t, ownerUid: uid}));
+  } else {
+    Object.entries(allUsers).forEach(([aUid]) => {
+      Object.entries(allTasks[aUid] || {})
+        .filter(([,t]) => t.projectName === projName)
+        .forEach(([tid,t]) => allEntries.push({tid, t, ownerUid: aUid}));
+    });
+  }
+  allEntries.sort((a,b) => weekToNum(taskWeekLabel(b.t)) - weekToNum(taskWeekLabel(a.t)));
+  const showUser = !uid;
   let html = '';
-  if (!all.length) {
+  if (!allEntries.length) {
     html = '<div class="popup-empty">이력이 없습니다.</div>';
   } else {
     const byWeek = {};
-    all.forEach(([tid,t]) => {
+    allEntries.forEach(({tid,t,ownerUid}) => {
       const wl = taskWeekLabel(t);
       if (!byWeek[wl]) byWeek[wl] = [];
-      byWeek[wl].push([tid,t]);
+      byWeek[wl].push({tid,t,ownerUid});
     });
     const weeks = Object.keys(byWeek).sort((a,b) => weekToNum(b) - weekToNum(a));
     html = weeks.map(wl => `
       <div style="margin-bottom:14px">
         <div style="font-size:10px;font-weight:700;color:#aaa;letter-spacing:0.5px;padding:4px 0;border-bottom:1px solid #f0f0f0;margin-bottom:6px">${esc(wl)}</div>
-        ${byWeek[wl].map(([,t]) => `
+        ${byWeek[wl].map(({tid,t,ownerUid}) => {
+          const canEdit = ownerUid === currentProfile?.id;
+          const u = allUsers[ownerUid];
+          return `
           <div style="padding:7px 0;border-bottom:1px solid #f8f8f8">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
               <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'}">${esc(t.category||'실행')}</span>
               ${t.amount?`<span style="font-size:11px;font-weight:700;color:${amtColor(t.amount)}">${fmtAmount(t.amount)}</span>`:''}
+              ${showUser&&u?`<span class="popup-person-tag">${esc(u.name)}</span>`:''}
               <span style="font-size:10px;color:#bbb;margin-left:auto">${esc(t.updatedBy||'')} ${fmtTs(t.updatedAt)}</span>
+              ${canEdit?`<button onclick="toggleProjHistEdit('${tid}')" style="padding:2px 8px;background:#f0f4ff;border:1px solid #c7d7ff;border-radius:4px;font-size:10px;cursor:pointer;font-family:inherit;color:#4285f4">✏ 편집</button>`:''}
             </div>
             ${t.progress?`<div style="font-size:12px;color:#333;line-height:1.6;margin-bottom:5px">${esc(t.progress)}</div>`:''}
             <div style="display:flex;gap:4px;flex-wrap:wrap">
@@ -1671,12 +1693,70 @@ window.openProjHistPopup = (uid, projName) => {
               ${t.partner?`<span class="chip"><span class="chip-lbl">협력</span>${esc(t.partner)}</span>`:''}
               ${t.notes?`<span class="chip"><span class="chip-lbl">비고</span>${esc(t.notes)}</span>`:''}
             </div>
-          </div>`).join('')}
+            ${canEdit?`
+            <div id="phe-form-${tid}" style="display:none;background:#f8f9ff;border:1px solid #e0e8ff;border-radius:6px;padding:10px;margin-top:8px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                <div>
+                  <div style="font-size:10px;color:#888;margin-bottom:3px">진행구분</div>
+                  <select id="phe-cat-${tid}" style="width:100%;padding:5px;border:1px solid #ddd;border-radius:4px;font-family:inherit;font-size:12px">
+                    ${CATS.map(c=>`<option${t.category===c?' selected':''}>${c}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:#888;margin-bottom:3px">금액</div>
+                  <input id="phe-amt-${tid}" type="number" value="${t.amount||''}" style="width:100%;padding:5px;border:1px solid #ddd;border-radius:4px;font-family:inherit;font-size:12px;box-sizing:border-box">
+                </div>
+                <div style="grid-column:1/-1">
+                  <div style="font-size:10px;color:#888;margin-bottom:3px">진행상황</div>
+                  <textarea id="phe-prog-${tid}" rows="3" style="width:100%;padding:5px;border:1px solid #ddd;border-radius:4px;font-family:inherit;font-size:12px;resize:vertical;box-sizing:border-box">${esc(t.progress||'')}</textarea>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:#888;margin-bottom:3px">실행일정</div>
+                  <input id="phe-sch-${tid}" value="${esc(t.schedule||'')}" style="width:100%;padding:5px;border:1px solid #ddd;border-radius:4px;font-family:inherit;font-size:12px;box-sizing:border-box">
+                </div>
+                <div>
+                  <div style="font-size:10px;color:#888;margin-bottom:3px">협력업체</div>
+                  <input id="phe-par-${tid}" value="${esc(t.partner||'')}" style="width:100%;padding:5px;border:1px solid #ddd;border-radius:4px;font-family:inherit;font-size:12px;box-sizing:border-box">
+                </div>
+                <div style="grid-column:1/-1">
+                  <div style="font-size:10px;color:#888;margin-bottom:3px">비고</div>
+                  <input id="phe-notes-${tid}" value="${esc(t.notes||'')}" style="width:100%;padding:5px;border:1px solid #ddd;border-radius:4px;font-family:inherit;font-size:12px;box-sizing:border-box">
+                </div>
+              </div>
+              <div style="display:flex;gap:6px;justify-content:flex-end">
+                <button onclick="toggleProjHistEdit('${tid}')" style="padding:5px 12px;background:#f5f5f5;border:none;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px">취소</button>
+                <button onclick="saveProjHistEntry('${ownerUid}','${tid}')" style="padding:5px 12px;background:#4285f4;color:white;border:none;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px">저장</button>
+              </div>
+            </div>` : ''}
+          </div>`;
+        }).join('')}
       </div>`).join('');
   }
   $('statPopupTitle').textContent = `📋 ${projName}`;
   $('statPopupBody').innerHTML = html;
   show('statPopup');
+};
+
+window.toggleProjHistEdit = (tid) => {
+  const form = document.getElementById(`phe-form-${tid}`);
+  if (!form) return;
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+};
+
+window.saveProjHistEntry = (ownerUid, tid) => {
+  const cat   = document.getElementById(`phe-cat-${tid}`)?.value || '';
+  const amt   = document.getElementById(`phe-amt-${tid}`)?.value || '';
+  const prog  = document.getElementById(`phe-prog-${tid}`)?.value.trim() || '';
+  const sch   = document.getElementById(`phe-sch-${tid}`)?.value.trim() || '';
+  const par   = document.getElementById(`phe-par-${tid}`)?.value.trim() || '';
+  const notes = document.getElementById(`phe-notes-${tid}`)?.value.trim() || '';
+  update(ref(db, `tasks/${ownerUid}/${tid}`), {
+    category: cat, progress: prog,
+    amount: amt === '' ? '' : Number(amt) || 0,
+    schedule: sch, partner: par, notes,
+    updatedBy: currentProfile.name, updatedAt: Date.now()
+  }).then(() => openProjHistPopup(_phpCtx.uid, _phpCtx.projName))
+    .catch(e => alert('저장 실패: ' + e.message));
 };
 
 // ── 프로젝트 수정 모달 ────────────────────────────────────────
@@ -1875,8 +1955,8 @@ window.openSitePopup = (siteName) => {
     if (n>=1e4) return `${Math.round(n/1e4)}만`;
     return n.toLocaleString('ko-KR');
   };
-  const html = matching.map(({t,u}) => `
-    <div class="popup-proj-row">
+  const html = matching.map(({uid,t,u}) => `
+    <div class="popup-proj-row popup-proj-row-link" onclick="openProjHistPopup('${uid}','${(t.projectName||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
       <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};flex-shrink:0;font-size:10px">${esc(t.category||'실행')}</span>
       <div class="popup-proj-name">${esc(t.projectName||'(제목 없음)')}</div>
       ${t.amount?`<span class="popup-proj-amt" style="color:${amtColor(t.amount)}">${fmtAmt(t.amount)}</span>`:''}
