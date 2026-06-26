@@ -203,9 +203,14 @@
     .week-header:hover { background:#fafbff; }
     .week-dot { width:10px; height:10px; border-radius:50%; background:#ccc; flex-shrink:0; }
     .week-dot.current { background:#34a853; box-shadow:0 0 0 3px rgba(52,168,83,0.18); }
+    .week-dot.next { background:#f59e0b; box-shadow:0 0 0 3px rgba(245,158,11,0.18); }
     .week-label { font-weight:700; font-size:13px; color:#1a1a2e; }
     .cur-badge {
       display:inline-block; padding:1px 7px; background:#dcfce7; color:#166534;
+      border-radius:10px; font-size:10px; font-weight:600; margin-left:6px; vertical-align:middle;
+    }
+    .nxt-badge {
+      display:inline-block; padding:1px 7px; background:#fef3c7; color:#92400e;
       border-radius:10px; font-size:10px; font-weight:600; margin-left:6px; vertical-align:middle;
     }
     .week-meta { font-size:12px; color:#aaa; }
@@ -408,7 +413,7 @@
     .popup-proj-row { padding:9px 0; border-bottom:1px solid #f5f5f5; display:flex; align-items:center; gap:8px; font-size:12px; }
     .popup-proj-row:last-child { border-bottom:none; }
     .popup-proj-name { flex:1; color:#333; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .popup-proj-amt { color:#059669; font-size:11px; font-weight:600; white-space:nowrap; flex-shrink:0; }
+    .popup-proj-amt { font-size:11px; font-weight:700; white-space:nowrap; flex-shrink:0; }
     .popup-person-tag { font-size:10px; color:#999; white-space:nowrap; flex-shrink:0; }
     .popup-empty { text-align:center; color:#ccc; padding:30px; font-size:12px; }
 
@@ -784,6 +789,8 @@ const CATS    = ['실행','제안','신규','도면','제작','테스트','개�
 const DRAWS   = ['—','작성필요','작성중','검토중','완료'];
 
 function fmtAmount(v) { return (!v && v!==0) ? '' : Number(v).toLocaleString('ko-KR')+'원'; }
+// 1억 이상: 초록, 미만: 파랑
+function amtColor(v) { return Number(v) >= 1e8 ? '#059669' : '#3b82f6'; }
 function fmtTs(ts) {
   if (!ts) return '';
   const d = new Date(ts);
@@ -797,8 +804,15 @@ function currentWeekLabel() {
   const firstDay = new Date(now.getFullYear(), m, 1).getDay();
   return `${m+1}월 ${Math.ceil((d+firstDay)/7)}주차`;
 }
+function nextWeekLabel() {
+  const now = new Date();
+  now.setDate(now.getDate() + 7);
+  const m = now.getMonth(), d = now.getDate();
+  const firstDay = new Date(now.getFullYear(), m, 1).getDay();
+  return `${m+1}월 ${Math.ceil((d+firstDay)/7)}주차`;
+}
 function taskWeekLabel(t) {
-  if (t.weekLabel) return t.weekLabel;
+  if (t.weekLabel) return t.weekLabel.replace(/(\d+)월\s*(\d+)주차.*/, '$1월 $2주차').trim();
   if (!t.updatedAt) return '이전 데이터';
   const dt = new Date(t.updatedAt);
   const m = dt.getMonth(), d = dt.getDate();
@@ -875,6 +889,7 @@ function renderUser(uid) {
   // ── 주차별 뷰 (기존) ──
   const tasks = sortedTasks(uid);
   const thisWeek = currentWeekLabel();
+  const nextWeek  = nextWeekLabel();
   const activeTasks   = tasks.filter(([,t]) => !isTaskArchived(t));
   const archivedTasks = tasks.filter(([,t]) =>  isTaskArchived(t));
   const byWeek = {};
@@ -886,10 +901,11 @@ function renderUser(uid) {
   if (!byWeek[thisWeek]) byWeek[thisWeek] = [];
   const weeks = Object.keys(byWeek).sort((a,b) => {
     if (a === thisWeek) return -1; if (b === thisWeek) return 1;
+    if (a === nextWeek)  return -1; if (b === nextWeek)  return 1;
     return weekToNum(b) - weekToNum(a);
   });
   return personHead +
-    weeks.map(wl => renderWeekSection(uid, wl, byWeek[wl], isOwn, wl===thisWeek)).join('') +
+    weeks.map(wl => renderWeekSection(uid, wl, byWeek[wl], isOwn, wl===thisWeek, wl===nextWeek)).join('') +
     (archivedTasks.length ? renderArchivedSection(uid, archivedTasks, isOwn) : '');
 }
 
@@ -1034,7 +1050,7 @@ function renderProjTimelineCard(uid, proj, isOwn, archived) {
     </div>`;
 }
 
-function renderWeekSection(uid, weekLabel, weekTasks, isOwn, isCurrentWeek) {
+function renderWeekSection(uid, weekLabel, weekTasks, isOwn, isCurrentWeek, isNextWeek) {
   const wKey = weekLabel.replace(/\s/g,'_');
   const isCollapsed = collapsedWeeks.has(`${uid}|${weekLabel}`);
   const byProj = {};
@@ -1046,8 +1062,8 @@ function renderWeekSection(uid, weekLabel, weekTasks, isOwn, isCurrentWeek) {
   return `
     <div class="week-section">
       <div class="week-header" onclick="toggleWeek('${uid}','${weekLabel}')">
-        <div class="week-dot${isCurrentWeek?' current':''}"></div>
-        <span class="week-label">${esc(weekLabel)}${isCurrentWeek?'<span class="cur-badge">이번 주</span>':''}</span>
+        <div class="week-dot${isCurrentWeek?' current':isNextWeek?' next':''}"></div>
+        <span class="week-label">${esc(weekLabel)}${isCurrentWeek?'<span class="cur-badge">이번 주</span>':isNextWeek?'<span class="nxt-badge">다음 주</span>':''}</span>
         <span class="week-meta">${weekTasks.length}건</span>
         ${isOwn ? `<button class="week-add-btn" onclick="event.stopPropagation();toggleQuickAdd('${uid}','${wKey}')">+ 프로젝트 추가</button>` : ''}
         <span class="week-chevron${isCollapsed?'':' open'}">▶</span>
@@ -1203,7 +1219,7 @@ function renderDashboard() {
   const personData = users.map(([uid,u]) => {
     const latest = latestPerProj(uid);
     const activeProjs = latest.filter(([,t]) => !isTaskArchived(t));
-    const recentTasks = sortedTasks(uid).filter(([,t]) => !isTaskArchived(t));
+    const recentTasks = sortedTasks(uid).filter(([,t]) => !isTaskArchived(t) && taskWeekLabel(t) === thisWeek);
     return { uid, u, tasks: recentTasks, projCount: activeProjs.length };
   });
   const maxProj = Math.max(...personData.map(p=>p.projCount), 1);
@@ -1566,8 +1582,8 @@ window.openStatPopup = (type) => {
     html = items.map(p => `
       <div class="popup-proj-row">
         <div class="popup-proj-name">${esc(p.name)}</div>
+        ${p.totalAmt ? `<span class="popup-proj-amt" style="color:${amtColor(p.totalAmt)}">${fmtAmt(p.totalAmt)}</span>` : ''}
         <span class="popup-person-tag">${p.persons.join(', ')}</span>
-        ${p.totalAmt ? `<span class="popup-proj-amt">${fmtAmt(p.totalAmt)}</span>` : ''}
       </div>`).join('') || '<div class="popup-empty">데이터 없음</div>';
 
   } else if (type === 'amount') {
@@ -1578,8 +1594,8 @@ window.openStatPopup = (type) => {
       <div class="popup-proj-row">
         <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};flex-shrink:0;font-size:10px">${esc(t.category||'실행')}</span>
         <div class="popup-proj-name">${esc(t.projectName||'(제목 없음)')}</div>
+        <span class="popup-proj-amt" style="color:${amtColor(t.amount)}">${fmtAmt(t.amount)}</span>
         <span class="popup-person-tag">${esc(u.name)}</span>
-        <span class="popup-proj-amt">${fmtAmt(t.amount)}</span>
       </div>`).join('') || '<div class="popup-empty">데이터 없음</div>';
 
   } else {
@@ -1596,8 +1612,8 @@ window.openStatPopup = (type) => {
       <div class="popup-proj-row">
         <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};flex-shrink:0;font-size:10px">${esc(t.category||'실행')}</span>
         <div class="popup-proj-name">${esc(t.projectName||'(제목 없음)')}</div>
+        ${t.amount ? `<span class="popup-proj-amt" style="color:${amtColor(t.amount)}">${fmtAmt(t.amount)}</span>` : ''}
         <span class="popup-person-tag">${esc(u.name)}</span>
-        ${t.amount ? `<span class="popup-proj-amt">${fmtAmt(t.amount)}</span>` : ''}
       </div>`).join('') || '<div class="popup-empty">해당 없음</div>';
   }
 
@@ -1807,8 +1823,8 @@ window.openSitePopup = (siteName) => {
     <div class="popup-proj-row">
       <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'};flex-shrink:0;font-size:10px">${esc(t.category||'실행')}</span>
       <div class="popup-proj-name">${esc(t.projectName||'(제목 없음)')}</div>
+      ${t.amount?`<span class="popup-proj-amt" style="color:${amtColor(t.amount)}">${fmtAmt(t.amount)}</span>`:''}
       <span class="popup-person-tag">${esc(u.name)}</span>
-      ${t.amount?`<span class="popup-proj-amt">${fmtAmt(t.amount)}</span>`:''}
     </div>`).join('') || '<div class="popup-empty">매칭된 프로젝트 없음</div>';
   $('statPopupTitle').textContent = `${siteName} (${matching.length}건)`;
   $('statPopupBody').innerHTML = html;
