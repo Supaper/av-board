@@ -201,6 +201,12 @@
       transition:background 0.1s;
     }
     .week-header:hover { background:#fafbff; }
+    .wh-current { border-left:4px solid #34a853; background:#f6fff8; }
+    .wh-current:hover { background:#edfdf3; }
+    .wh-next { border-left:4px solid #f59e0b; background:#fffdf0; }
+    .wh-next:hover { background:#fefce8; }
+    .wh-past { border-left:4px solid #e0e0e0; opacity:0.85; }
+    .wh-current .week-label, .wh-next .week-label { font-size:14px; }
     .week-dot { width:10px; height:10px; border-radius:50%; background:#ccc; flex-shrink:0; }
     .week-dot.current { background:#34a853; box-shadow:0 0 0 3px rgba(52,168,83,0.18); }
     .week-dot.next { background:#f59e0b; box-shadow:0 0 0 3px rgba(245,158,11,0.18); }
@@ -264,6 +270,8 @@
       display:flex; align-items:center; gap:9px; padding:11px 14px;
     }
     .proj-name { font-weight:600; font-size:13px; flex:1; color:#1a1a2e; }
+    .proj-name-link { cursor:pointer; }
+    .proj-name-link:hover { color:#4285f4; text-decoration:underline; }
     .proj-actions { display:flex; gap:5px; margin-left:auto; flex-shrink:0; }
     .btn-edit-p {
       padding:3px 10px; background:#f5f5f5; border:none; border-radius:4px;
@@ -855,7 +863,8 @@ function taskDateStr(t) { return toDateStr(taskDate(t)) || ''; }
 function todayStr() { return toDateStr(new Date()); }
 
 // 주차별 아코디언 상태 관리 (렌더 간 유지)
-const collapsedWeeks = new Set();
+const collapsedWeeks = new Set();      // 이번주/다음주 중 사용자가 닫은 것
+const manuallyOpenedWeeks = new Set(); // 지난 주차 중 사용자가 열어둔 것
 let viewMode = 'project'; // 'project' | 'week'
 window.setViewMode = (mode) => { viewMode = mode; renderBoard(); };
 
@@ -1052,7 +1061,10 @@ function renderProjTimelineCard(uid, proj, isOwn, archived) {
 
 function renderWeekSection(uid, weekLabel, weekTasks, isOwn, isCurrentWeek, isNextWeek) {
   const wKey = weekLabel.replace(/\s/g,'_');
-  const isCollapsed = collapsedWeeks.has(`${uid}|${weekLabel}`);
+  const isKeyWeek = isCurrentWeek || isNextWeek;
+  const key = `${uid}|${weekLabel}`;
+  const isCollapsed = isKeyWeek ? collapsedWeeks.has(key) : !manuallyOpenedWeeks.has(key);
+  const whClass = isCurrentWeek ? 'week-header wh-current' : isNextWeek ? 'week-header wh-next' : 'week-header wh-past';
   const byProj = {};
   weekTasks.forEach(([tid,t]) => {
     const pn = t.projectName || '(제목 없음)';
@@ -1061,7 +1073,7 @@ function renderWeekSection(uid, weekLabel, weekTasks, isOwn, isCurrentWeek, isNe
   });
   return `
     <div class="week-section">
-      <div class="week-header" onclick="toggleWeek('${uid}','${weekLabel}')">
+      <div class="${whClass}" onclick="toggleWeek('${uid}','${weekLabel}',${isKeyWeek})">
         <div class="week-dot${isCurrentWeek?' current':isNextWeek?' next':''}"></div>
         <span class="week-label">${esc(weekLabel)}${isCurrentWeek?'<span class="cur-badge">이번 주</span>':isNextWeek?'<span class="nxt-badge">다음 주</span>':''}</span>
         <span class="week-meta">${weekTasks.length}건</span>
@@ -1092,7 +1104,7 @@ function renderProjCard(uid, projName, tasks, isOwn, archived) {
     <div class="proj-card${archived?' archived-card':''}">
       <div class="proj-head">
         <span class="cat-badge" style="background:${CAT_BG[t0.category]||'#f3f4f6'};color:${CAT_FG[t0.category]||'#374151'}">${esc(t0.category||'실행')}</span>
-        <span class="proj-name">${esc(projName)}</span>
+        <span class="proj-name proj-name-link" onclick="event.stopPropagation();openProjHistPopup('${uid}','${projName.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">${esc(projName)}</span>
         ${isOwn ? `<div class="proj-actions">
           ${archived
             ? `<button class="btn-unarch-p" onclick="unarchiveTask('${uid}','${tid0}')">복원</button>`
@@ -1375,7 +1387,7 @@ function makePie(data, total) {
 // ── CRUD & 인터랙션 ──────────────────────────────────────────
 
 // 주차 아코디언 토글 (DOM 직접 조작, 재렌더 없음)
-window.toggleWeek = (uid, weekLabel) => {
+window.toggleWeek = (uid, weekLabel, isKeyWeek) => {
   const key = `${uid}|${weekLabel}`;
   const wKey = weekLabel.replace(/\s/g,'_');
   const body = document.getElementById(`wb-${uid}-${wKey}`);
@@ -1383,7 +1395,11 @@ window.toggleWeek = (uid, weekLabel) => {
   const collapsed = body.classList.toggle('collapsed');
   const chev = body.previousElementSibling?.querySelector('.week-chevron');
   if (chev) chev.classList.toggle('open', !collapsed);
-  collapsed ? collapsedWeeks.add(key) : collapsedWeeks.delete(key);
+  if (isKeyWeek) {
+    collapsed ? collapsedWeeks.add(key) : collapsedWeeks.delete(key);
+  } else {
+    collapsed ? manuallyOpenedWeeks.delete(key) : manuallyOpenedWeeks.add(key);
+  }
 };
 
 // 퀵 추가 박스 토글
@@ -1622,6 +1638,46 @@ window.openStatPopup = (type) => {
   show('statPopup');
 };
 window.closeStatPopup = () => hide('statPopup');
+
+window.openProjHistPopup = (uid, projName) => {
+  const all = Object.entries(allTasks[uid] || {})
+    .filter(([,t]) => t.projectName === projName)
+    .sort((a,b) => weekToNum(taskWeekLabel(b[1])) - weekToNum(taskWeekLabel(a[1])));
+  let html = '';
+  if (!all.length) {
+    html = '<div class="popup-empty">이력이 없습니다.</div>';
+  } else {
+    const byWeek = {};
+    all.forEach(([tid,t]) => {
+      const wl = taskWeekLabel(t);
+      if (!byWeek[wl]) byWeek[wl] = [];
+      byWeek[wl].push([tid,t]);
+    });
+    const weeks = Object.keys(byWeek).sort((a,b) => weekToNum(b) - weekToNum(a));
+    html = weeks.map(wl => `
+      <div style="margin-bottom:14px">
+        <div style="font-size:10px;font-weight:700;color:#aaa;letter-spacing:0.5px;padding:4px 0;border-bottom:1px solid #f0f0f0;margin-bottom:6px">${esc(wl)}</div>
+        ${byWeek[wl].map(([,t]) => `
+          <div style="padding:7px 0;border-bottom:1px solid #f8f8f8">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <span class="cat-badge" style="background:${CAT_BG[t.category]||'#f3f4f6'};color:${CAT_FG[t.category]||'#374151'}">${esc(t.category||'실행')}</span>
+              ${t.amount?`<span style="font-size:11px;font-weight:700;color:${amtColor(t.amount)}">${fmtAmount(t.amount)}</span>`:''}
+              <span style="font-size:10px;color:#bbb;margin-left:auto">${esc(t.updatedBy||'')} ${fmtTs(t.updatedAt)}</span>
+            </div>
+            ${t.progress?`<div style="font-size:12px;color:#333;line-height:1.6;margin-bottom:5px">${esc(t.progress)}</div>`:''}
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              ${t.drawingStatus&&t.drawingStatus!=='—'?`<span class="chip"><span class="chip-lbl">도면</span>${esc(t.drawingStatus)}</span>`:''}
+              ${t.schedule?`<span class="chip"><span class="chip-lbl">일정</span>${esc(t.schedule)}</span>`:''}
+              ${t.partner?`<span class="chip"><span class="chip-lbl">협력</span>${esc(t.partner)}</span>`:''}
+              ${t.notes?`<span class="chip"><span class="chip-lbl">비고</span>${esc(t.notes)}</span>`:''}
+            </div>
+          </div>`).join('')}
+      </div>`).join('');
+  }
+  $('statPopupTitle').textContent = `📋 ${projName}`;
+  $('statPopupBody').innerHTML = html;
+  show('statPopup');
+};
 
 // ── 프로젝트 수정 모달 ────────────────────────────────────────
 let projEditData = null;
