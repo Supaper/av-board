@@ -1729,19 +1729,28 @@ function parseExcel(rows) {
     result[personVal].push(task);
   }
 
-  // ── 완전히 동일한 행만 제거 (모든 필드가 같은 경우만) ──
+  // ── 중복 제거: 같은 프로젝트 안에서 내용이 동일한 항목은 가장 오래된 것만 유지 ──
+  // 매 주차 복사 방식에서 변동없이 반복된 행 제거. 내용이 바뀌면 새 항목으로 유지.
   let totalDupes = 0;
   const parsed = Object.entries(result).map(([name, tasks]) => {
-    const seen = new Set();
+    const projGroups = {};
+    for (const t of tasks) {
+      const pn = t.projectName || '(제목 없음)';
+      if (!projGroups[pn]) projGroups[pn] = [];
+      projGroups[pn].push(t);
+    }
     const unique = [];
-    for (const task of tasks) {
-      const fp = [task.projectName, task.weekLabel, task.category, task.drawingStatus,
-                  task.progress, String(task.amount||''), task.schedule, task.partner, task.notes].join('\x00');
-      if (seen.has(fp)) { totalDupes++; continue; }
-      seen.add(fp);
-      unique.push(task);
+    for (const ptasks of Object.values(projGroups)) {
+      ptasks.sort((a, b) => weekOrder(a.weekLabel) - weekOrder(b.weekLabel));
+      let lastContent = null;
+      for (const t of ptasks) {
+        const content = [t.category, t.drawingStatus, t.progress,
+                         String(t.amount||''), t.schedule, t.partner, t.notes].join('\x00');
+        if (content !== lastContent) { unique.push(t); lastContent = content; }
+      }
     }
     const dupeCount = tasks.length - unique.length;
+    totalDupes += dupeCount;
     return { name, tasks: unique, original: tasks.length, dupeCount };
   });
 
@@ -1777,7 +1786,7 @@ function renderImport() {
   $('xlBody').innerHTML = `
     <div class="xl-info">
       <strong>${xlParsed.length}명</strong> · <strong>${totalTasks}건</strong> 인식됨
-      ${totalDupes ? `&nbsp;<span style="color:#e53e3e;font-size:11px">(중복 ${totalDupes}건 제거됨 — 최신 주차 데이터만 유지)</span>` : ''}
+      ${totalDupes ? `&nbsp;<span style="color:#e53e3e;font-size:11px">(변동없는 반복 항목 ${totalDupes}건 제거 — 내용 변경 시점만 유지)</span>` : ''}
       &nbsp;|&nbsp; 담당자명이 보드 사용자와 자동 매칭됩니다. 체크박스로 항목을 선택/제외하세요.
     </div>
     ${xlParsed.map((g, gi) => {
