@@ -12,11 +12,16 @@
    - `## 완료된 기능` 섹션에 새 항목 추가
    - `## 다음 개발 우선순위 (Backlog)` 에서 해당 항목 제거 및 번호 재정렬
 
-2. **`git add` → `git commit` → `git push`**
+2. **`CHANGELOG.md`**
+   - 해당 버전 항목에 구현 내용 기록 (Added / Changed / Fixed)
+   - 버전 규칙: 기능 추가·변경 → `v1.X` 올림 / 버그픽스만 → `v1.X.Y` 올림
+
+3. **`git add` → `git commit` → `git push`**
    - 브랜치: `feat/initial-board` (현재 개발 브랜치)
    - GitHub Pages가 이 브랜치를 기준으로 배포되므로 push 즉시 반영됨
 
 > 업데이트를 빠뜨리면 다음 세션의 Claude가 이미 완성된 기능을 "아직 할 일"로 잘못 안내한다.
+> CHANGELOG 없이 인프라 설정(Firebase 룰 등)을 변경하면 사고 발생 시 복구 근거가 없어진다.
 
 ---
 
@@ -53,18 +58,18 @@ Firebase + Vanilla HTML/CSS/JS 기반의 **주간 업무 보드 (AV Board)**.
 
 ### Firebase 데이터 구조
 ```
+users/
+  {uid}/
+    name, email, title, color, admin (bool)
 tasks/
   {uid}/
     {taskId}/
       projectName, category, amount, progressRate,
       schedule, partner, notes, weekLabel,
       createdAt, updatedAt, archived
-siteInfo/
+sites/
   {siteId}/
-    name, location, ...
-profiles/
-  {uid}/
-    name, title, color, admin (bool)
+    name, locations
 ```
 
 ### window.* 온클릭 패턴
@@ -78,7 +83,7 @@ profiles/
 - 앱 내 주차 계산: `Math.ceil((day + firstDayOfMonth) / 7)` 공식 사용
 
 ### 관리자 권한
-- `profiles/{uid}/admin: true` 를 Firebase 콘솔에서 수동 설정
+- `users/{uid}/admin: true` 를 Firebase 콘솔에서 수동 설정
 - 편집 권한 체크: `const canEdit = ownerUid === currentProfile?.id || currentProfile?.admin === true`
 
 ---
@@ -162,8 +167,17 @@ profiles/
 - `gh` CLI 사용 시 GitHub token 노출 주의 — 브라우저 방식 권장
 
 ### Firebase
+
+**⚠️ Firebase 룰은 반드시 `database.rules.json`으로 git 추적한다.**
+
 - Firebase config 키는 클라이언트 코드에 임베드 (공개 키이므로 비밀이 아님)
 - 보안은 Firebase Security Rules로 처리 (콘솔에서 관리)
+- **룰 변경 시 절차:**
+  1. 콘솔에서 룰 수정 → 게시
+  2. `database.rules.json` 동일하게 업데이트
+  3. 커밋에 포함 (`git add database.rules.json`)
+- **룰 복구 시:** `database.rules.json` 내용을 콘솔 Rules 탭에 붙여넣고 게시
+- 현재 룰 요약: 로그인한 사용자만 읽기·쓰기 / `users` 경로에 `email` 인덱스 필요
 
 ---
 
